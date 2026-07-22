@@ -34,6 +34,7 @@ Usage:
   core uninstall <module> [--tool...] Uninstall module/tools
   core update                   Update core-linux framework itself
   core update --check           Check for updates without applying
+  core update --force           Force reinstall even if same version
   core update <module>          Reinstall a specific module
   core update --all             Update all installed modules
   core list [module]            List modules or tools
@@ -78,6 +79,9 @@ main() {
 			if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
 				source "$CORE_HOME/lib/core/updater.sh"
 				self_update --check
+			elif [[ "${1:-}" == "--force" || "${1:-}" == "-f" ]]; then
+				source "$CORE_HOME/lib/core/updater.sh"
+				self_update --force
 			elif [[ "${1:-}" == "--all" ]]; then
 				source "$CORE_HOME/lib/core/module_manager.sh"
 				local mod
