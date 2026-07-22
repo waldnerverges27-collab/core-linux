@@ -43,7 +43,7 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) viewID {
 		a.installProgress = 0.0
 		a.currentView = viewInstall
 		go func(m string) {
-			bashRun(fmt.Sprintf("source %s/lib/core/module_manager.sh && module_install '%s'", coreHomeDir(), m))
+			coreCLI("install", m)
 		}(a.selectedModule)
 		return viewInstall
 	case keyMatches(msg, "x"):
@@ -52,7 +52,7 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) viewID {
 		a.installProgress = 0.0
 		a.currentView = viewInstall
 		go func(m string) {
-			bashRun(fmt.Sprintf("source %s/lib/core/module_manager.sh && module_uninstall '%s'", coreHomeDir(), m))
+			coreCLI("uninstall", m)
 		}(a.selectedModule)
 		return viewInstall
 	}

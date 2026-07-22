@@ -48,6 +48,16 @@ func bashRun(cmd string) error {
 	return c.Run()
 }
 
+// coreCLI ejecuta 'core <args>' a través del CLI principal
+// Esto asegura que la TUI use EXACTAMENTE los mismos métodos
+// que el CLI: verificación, versiones, --upgrade, etc.
+func coreCLI(args ...string) error {
+	corePath := coreHomeDir() + "/core"
+	cmdArgs := append([]string{corePath}, args...)
+	c := exec.Command("bash", cmdArgs...)
+	return c.Run()
+}
+
 func coreHomeDir() string {
 	if h := os.Getenv("CORE_HOME"); h != "" {
 		return h

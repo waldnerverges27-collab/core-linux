@@ -16,11 +16,11 @@ func (a *App) updateEnv(msg tea.KeyMsg) viewID {
 		return viewHome
 	case keyMatches(msg, "1"):
 		go func() {
-			bashRun(fmt.Sprintf("source %s/lib/core/env_manager.sh && env_set", coreHomeDir()))
+			coreCLI("env", "set")
 		}()
 	case keyMatches(msg, "2"):
 		go func() {
-			bashRun(fmt.Sprintf("source %s/lib/core/env_manager.sh && env_unset", coreHomeDir()))
+			coreCLI("env", "unset")
 		}()
 	}
 	return viewEnv
