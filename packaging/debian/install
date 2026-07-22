@@ -1,0 +1,4 @@
+core usr/bin/
+cmd/core-tui/core-tui usr/bin/ 2>/dev/null || true
+modules/* usr/share/core-linux/modules/
+lib/* usr/share/core-linux/lib/

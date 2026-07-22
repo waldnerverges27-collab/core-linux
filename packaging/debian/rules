@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_test:
+	echo "Tests run via make test"
+
+override_dh_auto_build:
+	cd cmd/core-tui && go build -ldflags="-s -w" -o core-tui .
+
+override_dh_install:
+	dh_install
+	install -Dm755 core debian/core-linux/usr/bin/core
+	install -Dm755 cmd/core-tui/core-tui debian/core-linux/usr/bin/core-tui 2>/dev/null || true
+	mkdir -p debian/core-linux/usr/share/core-linux
+	cp -r modules debian/core-linux/usr/share/core-linux/
+	cp -r lib debian/core-linux/usr/share/core-linux/

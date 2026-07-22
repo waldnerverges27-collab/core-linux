@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# core-linux — Command Line Interface
+set -euo pipefail
+
+CORE_HOME="${CORE_HOME:-$HOME/.local/share/core-linux}"
+export CORE_HOME
+
+source "$CORE_HOME/lib/utils/logger.sh" 2>/dev/null || true
+source "$CORE_HOME/lib/core/state.sh" 2>/dev/null || true
+source "$CORE_HOME/lib/utils/prompt.sh" 2>/dev/null || true
+
+version() {
+	local ver="1.0.0"
+	if [[ -f "$CORE_HOME/core.conf.example" ]]; then
+		ver=$(grep -E '^version' "$CORE_HOME/core.conf.example" 2>/dev/null | head -1 | cut -d'"' -f2 || echo "1.0.0")
+	fi
+	echo "core-linux version $ver"
+}
+
+usage() {
+	cat <<- EOF
+core-linux — Modular Development Environment
+
+Usage:
+  core                          Launch TUI (or fallback bash TUI)
+  core install <module> [--tool...]  Install module/tools
+  core uninstall <module> [--tool...] Uninstall module/tools
+  core update [module|--all]    Update framework or module
+  core list [module]            List modules or tools
+  core show <module|tool>       Show details
+  core env set|unset|ls         Manage environment variables
+  core brain <subcommand>       Second brain memory system
+  core init                     Interactive project setup
+  core --version                Print version
+  core --help                   Show this help
+EOF
+}
+
+main() {
+	local cmd="${1:-}"
+	[[ $# -gt 0 ]] && shift
+
+	case "$cmd" in
+		"")
+			if [[ -x "$CORE_HOME/core-tui" ]]; then
+				exec "$CORE_HOME/core-tui"
+			elif [[ -f "$CORE_HOME/lib/tui/fallback.sh" ]]; then
+				source "$CORE_HOME/lib/tui/fallback.sh"
+				fallback_tui
+			else
+				log_error "No TUI available. Run 'core list' to see modules."
+				exit 1
+			fi
+			;;
+		install)
+			source "$CORE_HOME/lib/core/module_manager.sh"
+			local mod="${1:?$(log_error 'Usage: core install <module> [--tool...]' && exit 1)}"
+			shift
+			module_install "$mod" "$@"
+			;;
+		uninstall)
+			source "$CORE_HOME/lib/core/module_manager.sh"
+			local mod="${1:?$(log_error 'Usage: core uninstall <module> [--tool...]' && exit 1)}"
+			shift
+			module_uninstall "$mod" "$@"
+			;;
+		update)
+			if [[ "${1:-}" == "--all" ]]; then
+				source "$CORE_HOME/lib/core/module_manager.sh"
+				local mod
+				while IFS= read -r mod; do
+					[[ -n "$mod" ]] && module_update "$mod"
+				done < <(get_installed_modules)
+			elif [[ -n "${1:-}" ]]; then
+				source "$CORE_HOME/lib/core/module_manager.sh"
+				module_update "$1"
+			else
+				source "$CORE_HOME/lib/core/updater.sh"
+				self_update
+			fi
+			;;
+		list)
+			source "$CORE_HOME/lib/core/module_manager.sh"
+			module_list "${1:-}"
+			;;
+		show)
+			source "$CORE_HOME/lib/core/module_manager.sh"
+			module_show "${1:?$(log_error 'Usage: core show <module|tool>' && exit 1)}"
+			;;
+		env)
+			source "$CORE_HOME/lib/core/env_manager.sh"
+			local sub="${1:-ls}"
+			shift 2>/dev/null || true
+			case "$sub" in
+				set) env_set "$@" ;;
+				unset) env_unset ;;
+				ls) env_ls ;;
+				*) log_error "Usage: core env set|unset|ls"; exit 1 ;;
+			esac
+			;;
+		brain)
+			source "$CORE_HOME/lib/core/brain.sh"
+			local sub="${1:-ls}"
+			shift 2>/dev/null || true
+			case "$sub" in
+				init) brain_init ;;
+				save) brain_save "$@" ;;
+				search) brain_search "${1:-}" ;;
+				ls) brain_ls "${1:-}" ;;
+				show) brain_show "${1:-}" ;;
+				edit) brain_edit "${1:-}" ;;
+				delete) brain_delete "${1:-}" ;;
+				reset) brain_reset ;;
+				graph) brain_graph "${1:-}" ;;
+				sync) brain_sync ;;
+				*) log_error "Usage: core brain init|save|search|ls|show|edit|delete|reset|graph|sync"; exit 1 ;;
+			esac
+			;;
+		init)
+			echo "core-linux Project Init"
+			echo "======================"
+			local lang=""
+			[[ -f package.json ]] && lang="node"
+			[[ -f Cargo.toml ]] && lang="rust"
+			[[ -f go.mod ]] && lang="go"
+			[[ -f pyproject.toml || -f setup.py ]] && lang="python"
+			if [[ -n "$lang" ]]; then
+				echo "Detected: $lang project"
+				if confirm "Install $lang tooling?"; then
+					source "$CORE_HOME/lib/core/module_manager.sh"
+					module_install "$lang"
+				fi
+			else
+				echo "No known project files detected."
+				echo "Run 'core list' to see available modules."
+				if confirm "Install recommended dev tools (dev module)?"; then
+					source "$CORE_HOME/lib/core/module_manager.sh"
+					module_install dev
+				fi
+			fi
+			;;
+		--version|-v)
+			version
+			;;
+		--help|-h)
+			usage
+			;;
+		*)
+			log_error "Unknown command: $cmd"
+			usage
+			exit 1
+			;;
+	esac
+}
+
+main "$@"

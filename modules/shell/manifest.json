@@ -1,0 +1,151 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "shell",
+  "version": "1.0.0",
+  "description": "Shell enhancements and terminal utilities",
+  "author": "core-linux",
+  "icon": "🐚",
+  "dependencies": [],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 256,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "zsh",
+      "flag": "--zsh",
+      "description": "Z shell with advanced features",
+      "version_cmd": "zsh --version 2>/dev/null | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "sudo apt-get install -y zsh",
+        "fedora": "sudo dnf install -y zsh",
+        "arch": "sudo pacman -S --noconfirm zsh",
+        "opensuse": "sudo zypper install -y zsh",
+        "void": "sudo xbps-install -y zsh"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y zsh",
+        "arch": "sudo pacman -Rns --noconfirm zsh",
+        "default": "sudo apt-get remove -y zsh"
+      },
+      "size_mb": 10,
+      "tags": ["shell", "zsh", "terminal"]
+    },
+    {
+      "name": "fish",
+      "flag": "--fish",
+      "description": "Friendly interactive shell",
+      "version_cmd": "fish --version 2>/dev/null | cut -d' ' -f3",
+      "install": {
+        "ubuntu": "sudo apt-add-repository -y ppa:fish-shell/release-3 && sudo apt-get update && sudo apt-get install -y fish",
+        "fedora": "sudo dnf install -y fish",
+        "arch": "sudo pacman -S --noconfirm fish",
+        "opensuse": "sudo zypper install -y fish",
+        "void": "sudo xbps-install -y fish"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y fish",
+        "arch": "sudo pacman -Rns --noconfirm fish",
+        "default": "sudo apt-get remove -y fish"
+      },
+      "size_mb": 10,
+      "tags": ["shell", "fish", "terminal"]
+    },
+    {
+      "name": "starship",
+      "flag": "--starship",
+      "description": "Minimal and customizable prompt",
+      "version_cmd": "starship --version 2>/dev/null | head -1 | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl -fsSL https://starship.rs/install.sh | sh -s -- -y",
+        "fedora": "sudo dnf install -y starship",
+        "arch": "sudo pacman -S --noconfirm starship",
+        "opensuse": "sudo zypper install -y starship",
+        "void": "sudo xbps-install -y starship",
+        "default": "curl -fsSL https://starship.rs/install.sh | sh -s -- -y"
+      },
+      "uninstall": {
+        "ubuntu": "rm -f /usr/local/bin/starship",
+        "arch": "sudo pacman -Rns --noconfirm starship",
+        "default": "rm -f /usr/local/bin/starship"
+      },
+      "size_mb": 10,
+      "tags": ["prompt", "shell", "theme"]
+    },
+    {
+      "name": "oh-my-zsh",
+      "flag": "--oh-my-zsh",
+      "description": "Zsh configuration framework",
+      "version_cmd": "test -d $HOME/.oh-my-zsh && echo 'installed' || echo 'not installed'",
+      "install": {
+        "ubuntu": "sh -c \"$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)\" \"\" --unattended",
+        "arch": "sh -c \"$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)\" \"\" --unattended",
+        "default": "sh -c \"$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)\" \"\" --unattended"
+      },
+      "uninstall": {
+        "default": "rm -rf $HOME/.oh-my-zsh && sed -i '/ZSH=/d' $HOME/.zshrc 2>/dev/null || true"
+      },
+      "size_mb": 50,
+      "tags": ["zsh", "framework", "plugins"]
+    },
+    {
+      "name": "powerlevel10k",
+      "flag": "--powerlevel10k",
+      "description": "Zsh theme with performance and customization",
+      "version_cmd": "test -d $HOME/.oh-my-zsh/custom/themes/powerlevel10k && echo 'installed' || echo 'not installed'",
+      "install": {
+        "ubuntu": "git clone --depth=1 https://github.com/romkatv/powerlevel10k.git $HOME/.oh-my-zsh/custom/themes/powerlevel10k 2>/dev/null || true",
+        "arch": "git clone --depth=1 https://github.com/romkatv/powerlevel10k.git $HOME/.oh-my-zsh/custom/themes/powerlevel10k 2>/dev/null || true",
+        "default": "git clone --depth=1 https://github.com/romkatv/powerlevel10k.git $HOME/.oh-my-zsh/custom/themes/powerlevel10k 2>/dev/null || true"
+      },
+      "uninstall": {
+        "default": "rm -rf $HOME/.oh-my-zsh/custom/themes/powerlevel10k"
+      },
+      "size_mb": 5,
+      "tags": ["zsh", "theme", "prompt"]
+    },
+    {
+      "name": "zoxide",
+      "flag": "--zoxide",
+      "description": "Smarter cd command for the terminal",
+      "version_cmd": "zoxide --version 2>/dev/null | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh",
+        "fedora": "sudo dnf install -y zoxide",
+        "arch": "sudo pacman -S --noconfirm zoxide",
+        "opensuse": "sudo zypper install -y zoxide",
+        "void": "sudo xbps-install -y zoxide",
+        "default": "curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh"
+      },
+      "uninstall": {
+        "ubuntu": "rm -f /usr/local/bin/zoxide",
+        "arch": "sudo pacman -Rns --noconfirm zoxide",
+        "default": "rm -f /usr/local/bin/zoxide"
+      },
+      "size_mb": 3,
+      "tags": ["navigation", "shell", "productivity"]
+    },
+    {
+      "name": "fzf",
+      "flag": "--fzf",
+      "description": "Fuzzy finder for the terminal",
+      "version_cmd": "fzf --version 2>/dev/null | cut -d' ' -f1",
+      "install": {
+        "ubuntu": "sudo apt-get install -y fzf",
+        "fedora": "sudo dnf install -y fzf",
+        "arch": "sudo pacman -S --noconfirm fzf",
+        "opensuse": "sudo zypper install -y fzf",
+        "void": "sudo xbps-install -y fzf"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y fzf",
+        "arch": "sudo pacman -Rns --noconfirm fzf",
+        "default": "sudo apt-get remove -y fzf"
+      },
+      "size_mb": 3,
+      "tags": ["search", "fuzzy", "productivity"]
+    }
+  ]
+}

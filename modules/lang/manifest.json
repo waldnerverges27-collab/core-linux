@@ -1,0 +1,146 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "lang",
+  "version": "1.0.0",
+  "description": "Programming languages and runtimes",
+  "author": "core-linux",
+  "icon": "🔤",
+  "dependencies": [],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 512,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "node",
+      "flag": "--node",
+      "description": "JavaScript runtime and npm package manager",
+      "version_cmd": "node --version 2>/dev/null",
+      "install": {
+        "ubuntu": "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs",
+        "fedora": "curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo -E bash - && sudo dnf install -y nodejs",
+        "arch": "sudo pacman -S --noconfirm nodejs npm",
+        "opensuse": "sudo zypper install -y nodejs20",
+        "default": "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y nodejs npm",
+        "arch": "sudo pacman -Rns --noconfirm nodejs npm",
+        "default": "sudo apt-get remove -y nodejs npm"
+      },
+      "size_mb": 80,
+      "tags": ["javascript", "runtime", "npm"]
+    },
+    {
+      "name": "python",
+      "flag": "--python",
+      "description": "Python programming language and pip",
+      "version_cmd": "python3 --version 2>/dev/null",
+      "install": {
+        "ubuntu": "sudo apt-get install -y python3 python3-pip python3-venv",
+        "fedora": "sudo dnf install -y python3 python3-pip",
+        "arch": "sudo pacman -S --noconfirm python python-pip",
+        "opensuse": "sudo zypper install -y python3 python3-pip",
+        "void": "sudo xbps-install -y python3 python3-pip"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y python3 python3-pip",
+        "arch": "sudo pacman -Rns --noconfirm python python-pip",
+        "default": "sudo apt-get remove -y python3 python3-pip"
+      },
+      "size_mb": 100,
+      "tags": ["python", "language", "pip"]
+    },
+    {
+      "name": "go",
+      "flag": "--go",
+      "description": "Go programming language and tools",
+      "version_cmd": "go version 2>/dev/null | grep -oP 'go\\K[0-9.]+'",
+      "install": {
+        "ubuntu": "wget -qO- https://go.dev/dl/go1.23.0.linux-amd64.tar.gz | sudo tar -C /usr/local -xz && echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh",
+        "fedora": "sudo dnf install -y golang",
+        "arch": "sudo pacman -S --noconfirm go",
+        "opensuse": "sudo zypper install -y go",
+        "default": "wget -qO- https://go.dev/dl/go1.23.0.linux-amd64.tar.gz | sudo tar -C /usr/local -xz"
+      },
+      "uninstall": {
+        "ubuntu": "sudo rm -rf /usr/local/go /etc/profile.d/go.sh",
+        "arch": "sudo pacman -Rns --noconfirm go",
+        "default": "sudo rm -rf /usr/local/go"
+      },
+      "size_mb": 300,
+      "tags": ["go", "language", "compiler"]
+    },
+    {
+      "name": "rust",
+      "flag": "--rust",
+      "description": "Rust programming language and cargo",
+      "version_cmd": "rustc --version 2>/dev/null | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
+        "fedora": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
+        "arch": "sudo pacman -S --noconfirm rust rustup",
+        "default": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+      },
+      "uninstall": {
+        "arch": "sudo pacman -Rns --noconfirm rust rustup; rustup self uninstall -y 2>/dev/null || true",
+        "default": "rustup self uninstall -y 2>/dev/null || rm -rf $HOME/.rustup $HOME/.cargo"
+      },
+      "size_mb": 500,
+      "tags": ["rust", "language", "systems"]
+    },
+    {
+      "name": "zig",
+      "flag": "--zig",
+      "description": "Zig programming language",
+      "version_cmd": "zig version 2>/dev/null",
+      "install": {
+        "ubuntu": "wget -qO- https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz | sudo tar -xJ -C /usr/local --strip=1 zig-linux-x86_64-0.13.0/zig",
+        "arch": "sudo pacman -S --noconfirm zig",
+        "default": "wget -qO- https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz | sudo tar -xJ -C /usr/local --strip=1"
+      },
+      "uninstall": {
+        "arch": "sudo pacman -Rns --noconfirm zig",
+        "default": "sudo rm -f /usr/local/bin/zig"
+      },
+      "size_mb": 100,
+      "tags": ["zig", "language", "systems"]
+    },
+    {
+      "name": "deno",
+      "flag": "--deno",
+      "description": "Modern JavaScript/TypeScript runtime",
+      "version_cmd": "deno --version 2>/dev/null | head -1 | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl -fsSL https://deno.land/install.sh | sh -s -- -y",
+        "arch": "sudo pacman -S --noconfirm deno",
+        "default": "curl -fsSL https://deno.land/install.sh | sh -s -- -y"
+      },
+      "uninstall": {
+        "arch": "sudo pacman -Rns --noconfirm deno",
+        "default": "rm -f $HOME/.deno/bin/deno"
+      },
+      "size_mb": 60,
+      "tags": ["javascript", "typescript", "runtime"]
+    },
+    {
+      "name": "bun",
+      "flag": "--bun",
+      "description": "Fast all-in-one JavaScript runtime and toolkit",
+      "version_cmd": "bun --version 2>/dev/null",
+      "install": {
+        "ubuntu": "curl -fsSL https://bun.sh/install | bash",
+        "arch": "sudo pacman -S --noconfirm bun-bin",
+        "default": "curl -fsSL https://bun.sh/install | bash"
+      },
+      "uninstall": {
+        "arch": "sudo pacman -Rns --noconfirm bun-bin",
+        "default": "rm -rf $HOME/.bun"
+      },
+      "size_mb": 60,
+      "tags": ["javascript", "runtime", "fast"]
+    }
+  ]
+}

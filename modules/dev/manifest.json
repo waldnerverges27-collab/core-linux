@@ -1,0 +1,133 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "dev",
+  "version": "1.0.0",
+  "description": "DevOps and infrastructure tools",
+  "author": "core-linux",
+  "icon": "🔧",
+  "dependencies": [],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 1024,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "docker",
+      "flag": "--docker",
+      "description": "Container runtime and orchestration",
+      "version_cmd": "docker --version 2>/dev/null | grep -oP 'version \\K[0-9.]+'",
+      "install": {
+        "ubuntu": "curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER",
+        "fedora": "sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin",
+        "arch": "sudo pacman -S --noconfirm docker docker-compose && sudo systemctl enable docker && sudo usermod -aG docker $USER",
+        "opensuse": "sudo zypper install -y docker docker-compose",
+        "void": "sudo xbps-install -y docker docker-compose"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y docker-ce docker-ce-cli containerd.io",
+        "arch": "sudo pacman -Rns --noconfirm docker docker-compose",
+        "default": "sudo apt-get remove -y docker-ce"
+      },
+      "post_install": "sudo systemctl enable docker 2>/dev/null || true",
+      "size_mb": 200,
+      "tags": ["containers", "devops", "deployment"]
+    },
+    {
+      "name": "kubectl",
+      "flag": "--kubectl",
+      "description": "Kubernetes cluster manager",
+      "version_cmd": "kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion' | cut -c2- || kubectl version --client 2>/dev/null | cut -d' ' -f6",
+      "install": {
+        "ubuntu": "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list && sudo apt-get update && sudo apt-get install -y kubectl",
+        "fedora": "cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo\n[kubernetes]\nname=Kubernetes\nbaseurl=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/\nenabled=1\ngpgcheck=1\ngpgkey=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/repodata/repomd.xml.key\nEOF\nsudo dnf install -y kubectl",
+        "arch": "sudo pacman -S --noconfirm kubectl",
+        "opensuse": "sudo zypper install -y kubernetes-client",
+        "default": "curl -LO https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl && sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y kubectl",
+        "arch": "sudo pacman -Rns --noconfirm kubectl",
+        "default": "sudo rm -f /usr/local/bin/kubectl"
+      },
+      "size_mb": 50,
+      "tags": ["kubernetes", "devops", "containers"]
+    },
+    {
+      "name": "helm",
+      "flag": "--helm",
+      "description": "Kubernetes package manager",
+      "version_cmd": "helm version --short 2>/dev/null | cut -c2-",
+      "install": {
+        "ubuntu": "curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null && echo 'deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main' | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list && sudo apt-get update && sudo apt-get install -y helm",
+        "arch": "sudo pacman -S --noconfirm helm",
+        "opensuse": "sudo zypper install -y helm",
+        "default": "curl -fsSL https://get.helm.sh/helm-v3.15.0-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin --strip=1 linux-amd64/helm"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y helm",
+        "arch": "sudo pacman -Rns --noconfirm helm",
+        "default": "sudo rm -f /usr/local/bin/helm"
+      },
+      "size_mb": 50,
+      "tags": ["kubernetes", "devops", "packaging"]
+    },
+    {
+      "name": "terraform",
+      "flag": "--terraform",
+      "description": "Infrastructure as Code tool",
+      "version_cmd": "terraform version 2>/dev/null | head -1 | cut -d'v' -f2",
+      "install": {
+        "ubuntu": "wget -qO- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null && echo 'deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main' | sudo tee /etc/apt/sources.list.d/hashicorp.list && sudo apt-get update && sudo apt-get install -y terraform",
+        "arch": "sudo pacman -S --noconfirm terraform",
+        "opensuse": "sudo zypper install -y terraform",
+        "default": "curl -fsSL https://releases.hashicorp.com/terraform/1.9.0/terraform_1.9.0_linux_amd64.zip | zcat > /usr/local/bin/terraform && chmod +x /usr/local/bin/terraform"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y terraform",
+        "arch": "sudo pacman -Rns --noconfirm terraform",
+        "default": "sudo rm -f /usr/local/bin/terraform"
+      },
+      "size_mb": 80,
+      "tags": ["infrastructure", "iac", "devops"]
+    },
+    {
+      "name": "ansible",
+      "flag": "--ansible",
+      "description": "Automation and configuration management",
+      "version_cmd": "ansible --version 2>/dev/null | head -1 | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "sudo apt-get install -y ansible",
+        "fedora": "sudo dnf install -y ansible",
+        "arch": "sudo pacman -S --noconfirm ansible",
+        "opensuse": "sudo zypper install -y ansible",
+        "void": "sudo xbps-install -y ansible"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y ansible",
+        "arch": "sudo pacman -Rns --noconfirm ansible",
+        "default": "sudo apt-get remove -y ansible"
+      },
+      "size_mb": 100,
+      "tags": ["automation", "devops", "configuration"]
+    },
+    {
+      "name": "act",
+      "flag": "--act",
+      "description": "Run GitHub Actions locally",
+      "version_cmd": "act --version 2>/dev/null | cut -d' ' -f3",
+      "install": {
+        "ubuntu": "curl -fsSL https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash",
+        "arch": "yay -S --noconfirm act",
+        "default": "curl -fsSL https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash"
+      },
+      "uninstall": {
+        "arch": "yay -Rns --noconfirm act",
+        "default": "sudo rm -f /usr/local/bin/act"
+      },
+      "size_mb": 30,
+      "tags": ["github-actions", "ci", "testing"]
+    }
+  ]
+}

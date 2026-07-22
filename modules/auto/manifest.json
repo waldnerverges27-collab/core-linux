@@ -1,0 +1,123 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "auto",
+  "version": "1.0.0",
+  "description": "CI/CD and automation tools",
+  "author": "core-linux",
+  "icon": "⚡",
+  "dependencies": ["dev"],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 1024,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "jenkins",
+      "flag": "--jenkins",
+      "description": "Automation server for CI/CD",
+      "version_cmd": "java -jar /usr/local/bin/jenkins.war --version 2>/dev/null || echo 'war'",
+      "install": {
+        "ubuntu": "sudo apt-get install -y openjdk-17-jre && wget -q https://get.jenkins.io/war-stable/latest/jenkins.war -O /usr/local/bin/jenkins.war",
+        "arch": "yay -S --noconfirm jenkins-lts",
+        "default": "sudo apt-get install -y openjdk-17-jre && wget -q https://get.jenkins.io/war-stable/latest/jenkins.war -O /usr/local/bin/jenkins.war"
+      },
+      "uninstall": {
+        "ubuntu": "sudo rm -f /usr/local/bin/jenkins.war",
+        "arch": "yay -Rns --noconfirm jenkins-lts",
+        "default": "sudo rm -f /usr/local/bin/jenkins.war"
+      },
+      "size_mb": 100,
+      "tags": ["ci", "cd", "automation"]
+    },
+    {
+      "name": "github-actions",
+      "flag": "--github-actions",
+      "description": "GitHub Actions runner for self-hosted CI",
+      "version_cmd": "gh --version 2>/dev/null | head -1 | cut -d' ' -f3",
+      "install": {
+        "ubuntu": "curl -fsSL https://github.com/actions/runner/releases/download/v2.317.0/actions-runner-linux-x64-2.317.0.tar.gz | sudo tar -xz -C /opt/actions-runner",
+        "arch": "yay -S --noconfirm actions-runner",
+        "default": "curl -fsSL https://github.com/actions/runner/releases/download/v2.317.0/actions-runner-linux-x64-2.317.0.tar.gz | sudo tar -xz -C /opt/actions-runner"
+      },
+      "uninstall": {
+        "ubuntu": "sudo rm -rf /opt/actions-runner",
+        "arch": "yay -Rns --noconfirm actions-runner",
+        "default": "sudo rm -rf /opt/actions-runner"
+      },
+      "size_mb": 200,
+      "tags": ["ci", "github", "runner"]
+    },
+    {
+      "name": "gitlab-ci",
+      "flag": "--gitlab-ci",
+      "description": "GitLab Runner for CI/CD pipelines",
+      "version_cmd": "gitlab-runner --version 2>/dev/null | head -1 | cut -d' ' -f3",
+      "install": {
+        "ubuntu": "curl -fsSL https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | sudo bash && sudo apt-get install -y gitlab-runner",
+        "fedora": "curl -fsSL https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash && sudo dnf install -y gitlab-runner",
+        "arch": "yay -S --noconfirm gitlab-runner",
+        "default": "curl -fsSL https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | sudo bash && sudo apt-get install -y gitlab-runner"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y gitlab-runner",
+        "arch": "yay -Rns --noconfirm gitlab-runner",
+        "default": "sudo apt-get remove -y gitlab-runner"
+      },
+      "size_mb": 150,
+      "tags": ["ci", "gitlab", "runner"]
+    },
+    {
+      "name": "drone",
+      "flag": "--drone",
+      "description": "Container-native CI/CD platform",
+      "version_cmd": "drone --version 2>/dev/null | cut -d' ' -f3",
+      "install": {
+        "ubuntu": "curl -fsSL https://github.com/harness/drone-cli/releases/latest/download/drone_linux_amd64.tar.gz | sudo tar -xz -C /usr/local/bin drone",
+        "arch": "yay -S --noconfirm drone-cli-bin",
+        "default": "curl -fsSL https://github.com/harness/drone-cli/releases/latest/download/drone_linux_amd64.tar.gz | sudo tar -xz -C /usr/local/bin drone"
+      },
+      "uninstall": {
+        "arch": "yay -Rns --noconfirm drone-cli-bin",
+        "default": "sudo rm -f /usr/local/bin/drone"
+      },
+      "size_mb": 20,
+      "tags": ["ci", "cd", "containers"]
+    },
+    {
+      "name": "argo",
+      "flag": "--argo",
+      "description": "Kubernetes-native workflow engine",
+      "version_cmd": "argo version --short 2>/dev/null | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl -fsSL https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz | zcat > /usr/local/bin/argo && chmod +x /usr/local/bin/argo",
+        "arch": "yay -S --noconfirm argo-bin",
+        "default": "curl -fsSL https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz | zcat > /usr/local/bin/argo && chmod +x /usr/local/bin/argo"
+      },
+      "uninstall": {
+        "arch": "yay -Rns --noconfirm argo-bin",
+        "default": "sudo rm -f /usr/local/bin/argo"
+      },
+      "size_mb": 50,
+      "tags": ["kubernetes", "workflows", "ci"]
+    },
+    {
+      "name": "dagger",
+      "flag": "--dagger",
+      "description": "Programmable CI/CD engine",
+      "version_cmd": "dagger version 2>/dev/null | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl -fsSL https://dl.dagger.io/dagger/install.sh | sh",
+        "arch": "yay -S --noconfirm dagger",
+        "default": "curl -fsSL https://dl.dagger.io/dagger/install.sh | sh"
+      },
+      "uninstall": {
+        "arch": "yay -Rns --noconfirm dagger",
+        "default": "rm -f /usr/local/bin/dagger"
+      },
+      "size_mb": 50,
+      "tags": ["ci", "cd", "containers"]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+Source: core-linux
+Section: utils
+Priority: optional
+Maintainer: core-linux <dev@core-linux.dev>
+Build-Depends: debhelper-compat (= 13), golang-go (>= 2:1.22)
+Standards-Version: 4.6.2
+Homepage: https://github.com/waldnerverges27-collab/core-linux
+
+Package: core-linux
+Architecture: any
+Depends: bash (>= 5.0), curl, git, jq, fzf, ${shlibs:Depends}, ${misc:Depends}
+Description: Modular Development Environment for Linux terminals
+ core-linux provides a unified CLI and TUI for managing development
+ tools, languages, databases, AI assistants, and more.
+ It features a modular architecture with 8+ modules, each containing
+ multiple tools that can be installed individually via flags.

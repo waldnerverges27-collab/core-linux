@@ -1,0 +1,132 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "db",
+  "version": "1.0.0",
+  "description": "Databases and data stores",
+  "author": "core-linux",
+  "icon": "🗄️",
+  "dependencies": [],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 1024,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "postgresql",
+      "flag": "--postgresql",
+      "description": "Advanced relational database",
+      "version_cmd": "psql --version 2>/dev/null | awk '{print $3}'",
+      "install": {
+        "ubuntu": "sudo apt-get install -y postgresql postgresql-contrib",
+        "fedora": "sudo dnf install -y postgresql postgresql-server",
+        "arch": "sudo pacman -S --noconfirm postgresql",
+        "opensuse": "sudo zypper install -y postgresql postgresql-server",
+        "void": "sudo xbps-install -y postgresql"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y postgresql postgresql-contrib",
+        "arch": "sudo pacman -Rns --noconfirm postgresql",
+        "default": "sudo apt-get remove -y postgresql"
+      },
+      "post_install": "sudo systemctl enable postgresql 2>/dev/null || true",
+      "size_mb": 200,
+      "tags": ["sql", "relational", "database"]
+    },
+    {
+      "name": "mysql",
+      "flag": "--mysql",
+      "description": "Popular open-source relational database",
+      "version_cmd": "mysql --version 2>/dev/null | grep -oP 'Ver \\K[0-9.]+'",
+      "install": {
+        "ubuntu": "sudo apt-get install -y mysql-server",
+        "fedora": "sudo dnf install -y mysql-server",
+        "arch": "sudo pacman -S --noconfirm mysql",
+        "opensuse": "sudo zypper install -y mysql mysql-server",
+        "default": "sudo apt-get install -y mysql-server"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y mysql-server",
+        "arch": "sudo pacman -Rns --noconfirm mysql",
+        "default": "sudo apt-get remove -y mysql-server"
+      },
+      "size_mb": 300,
+      "tags": ["sql", "relational", "database"]
+    },
+    {
+      "name": "sqlite",
+      "flag": "--sqlite",
+      "description": "Embedded SQL database engine",
+      "version_cmd": "sqlite3 --version 2>/dev/null | awk '{print $1}'",
+      "install": {
+        "ubuntu": "sudo apt-get install -y sqlite3 libsqlite3-dev",
+        "fedora": "sudo dnf install -y sqlite sqlite-devel",
+        "arch": "sudo pacman -S --noconfirm sqlite",
+        "opensuse": "sudo zypper install -y sqlite3 sqlite3-devel",
+        "void": "sudo xbps-install -y sqlite"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y sqlite3 libsqlite3-dev",
+        "arch": "sudo pacman -Rns --noconfirm sqlite",
+        "default": "sudo apt-get remove -y sqlite3"
+      },
+      "size_mb": 10,
+      "tags": ["sql", "embedded", "lightweight"]
+    },
+    {
+      "name": "redis",
+      "flag": "--redis",
+      "description": "In-memory data structure store",
+      "version_cmd": "redis-server --version 2>/dev/null | grep -oP 'v=\\K[0-9.]+'",
+      "install": {
+        "ubuntu": "sudo apt-get install -y redis-server",
+        "fedora": "sudo dnf install -y redis",
+        "arch": "sudo pacman -S --noconfirm redis",
+        "opensuse": "sudo zypper install -y redis",
+        "void": "sudo xbps-install -y redis"
+      },
+      "uninstall": {
+        "ubuntu": "sudo apt-get remove -y redis-server",
+        "arch": "sudo pacman -Rns --noconfirm redis",
+        "default": "sudo apt-get remove -y redis-server"
+      },
+      "size_mb": 30,
+      "tags": ["cache", "in-memory", "key-value"]
+    },
+    {
+      "name": "mongodb",
+      "flag": "--mongodb",
+      "description": "NoSQL document database",
+      "version_cmd": "mongod --version 2>/dev/null | head -1 | cut -d' ' -f3",
+      "install": {
+        "ubuntu": "sudo apt-get install -y gnupg curl && curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg && echo 'deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main' | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list && sudo apt-get update && sudo apt-get install -y mongodb-org",
+        "arch": "sudo pacman -S --noconfirm mongodb-bin",
+        "default": "sudo apt-get install -y mongodb-org 2>/dev/null || echo 'Please install manually from mongodb.com'"
+      },
+      "uninstall": {
+        "arch": "sudo pacman -Rns --noconfirm mongodb-bin",
+        "default": "sudo apt-get remove -y mongodb-org"
+      },
+      "size_mb": 300,
+      "tags": ["nosql", "document", "database"]
+    },
+    {
+      "name": "duckdb",
+      "flag": "--duckdb",
+      "description": "In-process analytical SQL database",
+      "version_cmd": "duckdb --version 2>/dev/null",
+      "install": {
+        "ubuntu": "curl -fsSL https://install.duckdb.org | sh",
+        "arch": "sudo pacman -S --noconfirm duckdb",
+        "default": "curl -fsSL https://install.duckdb.org | sh"
+      },
+      "uninstall": {
+        "arch": "sudo pacman -Rns --noconfirm duckdb",
+        "default": "rm -f /usr/local/bin/duckdb"
+      },
+      "size_mb": 30,
+      "tags": ["sql", "analytics", "embedded"]
+    }
+  ]
+}

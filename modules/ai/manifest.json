@@ -1,0 +1,133 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "ai",
+  "version": "1.0.0",
+  "description": "AI agents and coding assistants",
+  "author": "core-linux",
+  "icon": "🤖",
+  "dependencies": ["lang"],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 2048,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "ollama",
+      "flag": "--ollama",
+      "description": "Run open-source LLMs locally",
+      "version_cmd": "ollama --version 2>/dev/null | cut -d' ' -f2",
+      "install": {
+        "ubuntu": "curl -fsSL https://ollama.com/install.sh | sh",
+        "fedora": "curl -fsSL https://ollama.com/install.sh | sh",
+        "arch": "yay -S --noconfirm ollama-bin 2>/dev/null || sudo pacman -S --noconfirm ollama",
+        "opensuse": "curl -fsSL https://ollama.com/install.sh | sh",
+        "default": "curl -fsSL https://ollama.com/install.sh | sh"
+      },
+      "uninstall": {
+        "ubuntu": "sudo systemctl stop ollama && sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama",
+        "arch": "sudo pacman -Rns --noconfirm ollama 2>/dev/null || yay -Rns --noconfirm ollama-bin 2>/dev/null || true",
+        "default": "sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama"
+      },
+      "post_install": "systemctl --user enable ollama 2>/dev/null || true",
+      "size_mb": 500,
+      "tags": ["llm", "local", "inference"]
+    },
+    {
+      "name": "qwen-code",
+      "flag": "--qwen-code",
+      "description": "Qwen2.5-Coder: code-specific LLM via Ollama",
+      "version_cmd": "ollama list 2>/dev/null | grep qwen2.5-coder || echo 'not pulled'",
+      "install": {
+        "ubuntu": "ollama pull qwen2.5-coder:7b 2>/dev/null || curl -fsSL https://ollama.com/install.sh | sh && ollama pull qwen2.5-coder:7b",
+        "arch": "ollama pull qwen2.5-coder:7b",
+        "default": "ollama pull qwen2.5-coder:7b"
+      },
+      "uninstall": {
+        "default": "ollama rm qwen2.5-coder:7b 2>/dev/null || true"
+      },
+      "size_mb": 4000,
+      "tags": ["llm", "code", "local"]
+    },
+    {
+      "name": "deepseek-coder",
+      "flag": "--deepseek-coder",
+      "description": "DeepSeek Coder via Ollama",
+      "version_cmd": "ollama list 2>/dev/null | grep deepseek-coder || echo 'not pulled'",
+      "install": {
+        "ubuntu": "ollama pull deepseek-coder:6.7b 2>/dev/null || (curl -fsSL https://ollama.com/install.sh | sh && ollama pull deepseek-coder:6.7b)",
+        "default": "ollama pull deepseek-coder:6.7b"
+      },
+      "uninstall": {
+        "default": "ollama rm deepseek-coder:6.7b 2>/dev/null || true"
+      },
+      "size_mb": 3500,
+      "tags": ["llm", "code", "local"]
+    },
+    {
+      "name": "chatgpt",
+      "flag": "--chatgpt",
+      "description": "OpenAI ChatGPT CLI client",
+      "version_cmd": "chatgpt --version 2>/dev/null || echo 'cli'",
+      "install": {
+        "ubuntu": "npm install -g @chatgpt/cli",
+        "arch": "yay -S --noconfirm chatgpt-cli 2>/dev/null || npm install -g @chatgpt/cli",
+        "default": "npm install -g @chatgpt/cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @chatgpt/cli"
+      },
+      "size_mb": 20,
+      "tags": ["llm", "cloud", "openai"]
+    },
+    {
+      "name": "copilot",
+      "flag": "--copilot",
+      "description": "GitHub Copilot CLI",
+      "version_cmd": "gh copilot --version 2>/dev/null || echo 'cli'",
+      "install": {
+        "ubuntu": "npm install -g @githubnext/github-copilot-cli",
+        "arch": "yay -S --noconfirm github-copilot-cli 2>/dev/null || npm install -g @githubnext/github-copilot-cli",
+        "default": "npm install -g @githubnext/github-copilot-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @githubnext/github-copilot-cli"
+      },
+      "size_mb": 20,
+      "tags": ["copilot", "ai", "github"]
+    },
+    {
+      "name": "aider",
+      "flag": "--aider",
+      "description": "AI pair programming in the terminal",
+      "version_cmd": "aider --version 2>/dev/null",
+      "install": {
+        "ubuntu": "pip3 install aider-chat",
+        "arch": "yay -S --noconfirm aider 2>/dev/null || pip3 install aider-chat",
+        "default": "pip3 install aider-chat"
+      },
+      "uninstall": {
+        "default": "pip3 uninstall -y aider-chat"
+      },
+      "size_mb": 50,
+      "tags": ["ai", "pair-programming", "cli"]
+    },
+    {
+      "name": "tabby",
+      "flag": "--tabby",
+      "description": "Self-hosted AI coding assistant",
+      "version_cmd": "tabby --version 2>/dev/null || echo 'cli'",
+      "install": {
+        "ubuntu": "curl -fsSL https://raw.githubusercontent.com/TabbyML/tabby/main/scripts/install.sh | sh",
+        "arch": "yay -S --noconfirm tabby-bin 2>/dev/null || curl -fsSL https://raw.githubusercontent.com/TabbyML/tabby/main/scripts/install.sh | sh",
+        "default": "curl -fsSL https://raw.githubusercontent.com/TabbyML/tabby/main/scripts/install.sh | sh"
+      },
+      "uninstall": {
+        "default": "rm -f /usr/local/bin/tabby"
+      },
+      "size_mb": 200,
+      "tags": ["ai", "code-completion", "self-hosted"]
+    }
+  ]
+}

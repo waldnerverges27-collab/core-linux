@@ -1,0 +1,103 @@
+{
+  "$schema": "core-linux-module-v1",
+  "name": "ui",
+  "version": "1.0.0",
+  "description": "Frontend UI libraries and frameworks",
+  "author": "core-linux",
+  "icon": "🎨",
+  "dependencies": ["lang"],
+  "conflicts": [],
+  "platform": {
+    "min_ram_mb": 1024,
+    "requires_gpu": false,
+    "supported_distros": ["ubuntu", "fedora", "arch", "opensuse", "void"]
+  },
+  "tools": [
+    {
+      "name": "tailwind",
+      "flag": "--tailwind",
+      "description": "Utility-first CSS framework",
+      "version_cmd": "npx tailwindcss --help 2>/dev/null | head -1 || echo 'npx'",
+      "install": {
+        "ubuntu": "npm install -g tailwindcss @tailwindcss/cli",
+        "arch": "yay -S --noconfirm tailwindcss 2>/dev/null || npm install -g tailwindcss",
+        "default": "npm install -g tailwindcss"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g tailwindcss"
+      },
+      "size_mb": 20,
+      "tags": ["css", "framework", "utility"]
+    },
+    {
+      "name": "shadcn-ui",
+      "flag": "--shadcn-ui",
+      "description": "React component library built on Radix",
+      "version_cmd": "npx shadcn@latest --version 2>/dev/null || echo 'npx'",
+      "install": {
+        "default": "npm install -g shadcn"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g shadcn"
+      },
+      "size_mb": 5,
+      "tags": ["react", "components", "ui"]
+    },
+    {
+      "name": "radix",
+      "flag": "--radix",
+      "description": "Headless UI primitives for React",
+      "version_cmd": "npm info @radix-ui/react-primitive version 2>/dev/null",
+      "install": {
+        "default": "npm install -g @radix-ui/react-primitives"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @radix-ui/react-primitives"
+      },
+      "size_mb": 5,
+      "tags": ["react", "headless", "ui"]
+    },
+    {
+      "name": "framer-motion",
+      "flag": "--framer-motion",
+      "description": "Animation library for React",
+      "version_cmd": "npm info framer-motion version 2>/dev/null",
+      "install": {
+        "default": "npm install -g framer-motion"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g framer-motion"
+      },
+      "size_mb": 10,
+      "tags": ["react", "animation", "motion"]
+    },
+    {
+      "name": "nextui",
+      "flag": "--nextui",
+      "description": "Beautiful React component library (NextUI)",
+      "version_cmd": "npm info @nextui-org/react version 2>/dev/null",
+      "install": {
+        "default": "npm install -g @nextui-org/react"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @nextui-org/react"
+      },
+      "size_mb": 15,
+      "tags": ["react", "components", "ui"]
+    },
+    {
+      "name": "daisyui",
+      "flag": "--daisyui",
+      "description": "Tailwind CSS component library",
+      "version_cmd": "npm info daisyui version 2>/dev/null",
+      "install": {
+        "default": "npm install -g daisyui"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g daisyui"
+      },
+      "size_mb": 5,
+      "tags": ["tailwind", "components", "css"]
+    }
+  ]
+}

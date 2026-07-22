@@ -1,0 +1,18 @@
+[colors]
+primary = "#c4a7e7"
+secondary = "#9ccfd8"
+accent = "#eb6f92"
+success = "#3e8fb0"
+warning = "#f6c177"
+error = "#eb6f92"
+bg = "#191724"
+surface = "#1f1d2e"
+text = "#e0def4"
+muted = "#6e6a86"
+border = "#26233a"
+
+[styles]
+border = "rounded"
+padding_x = 2
+padding_y = 1
+animation_speed = "normal"

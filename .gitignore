@@ -1,0 +1,15 @@
+# Exclude mimocode
+.mimocode/
+
+# Build artifacts
+cmd/core-tui/core-tui
+*.tar.gz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
