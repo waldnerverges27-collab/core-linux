@@ -86,7 +86,7 @@ module_list() {
 		fi
 
 		# Una sola llamada jq para extraer TODO el contenido del módulo
-		read -r name version description deps icon tool_count <<< \
+		IFS=$'\t' read -r name version description deps icon tool_count <<< \
 			$(jq -r '[.name, .version, .description, (.dependencies | join(",")), .icon, (.tools | length)] | @tsv' "$manifest" 2>/dev/null)
 		version="${version:-1.0.0}"
 		deps="${deps:-none}"
@@ -107,7 +107,7 @@ module_list() {
 					.name,
 					.flag,
 					.description,
-					(.tags // []) | join(",")
+					(if .tags then (.tags | join(",")) else "" end)
 				] | @tsv
 			' "$manifest" 2>/dev/null | while IFS=$'\t' read -r tname tflag tdesc ttags; do
 				local status="✗"
@@ -250,6 +250,142 @@ _ensure_cmds() {
 }
 
 # ------------------------------------------------------------------
+# Version detection (como core-termux, adaptado a Linux)
+# ------------------------------------------------------------------
+
+# Extrae la primera versión semver (X.Y.Z) de un string
+_parse_version() {
+	local output="$1"
+	local ver
+	ver=$(echo "$output" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+	if [[ -z "$ver" ]]; then
+		echo ""
+		return 1
+	fi
+	# Normalizar a X.Y.Z
+	if [[ "$ver" =~ ^[0-9]+\.[0-9]+$ ]]; then
+		echo "${ver}.0"
+	else
+		echo "$ver"
+	fi
+}
+
+# Obtiene la versión instalada de un binario ejecutando 'binary --version'
+_get_installed_version() {
+	local binary="${1:?Usage: _get_installed_version <binary> [flag]}"
+	local flag="${2:---version}"
+	local display="${3:-$binary}"
+
+	if ! command -v "$binary" &>/dev/null; then
+		echo ""
+		return 1
+	fi
+
+	local output
+	output=$("$binary" "$flag" 2>&1) || true
+	_parse_version "$output"
+}
+
+# Obtiene la última versión de un GitHub repo
+_get_remote_github_version() {
+	local repo="${1:?Usage: _get_remote_github_version <owner/repo>}"
+	local tag
+
+	tag=$(curl -fsSL --connect-timeout 5 --max-time 10 \
+		"https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+		| jq -r '.tag_name // empty' 2>/dev/null || echo "")
+
+	if [[ -z "$tag" ]]; then
+		# Fallback: tags
+		tag=$(curl -fsSL --connect-timeout 5 --max-time 10 \
+			"https://api.github.com/repos/$repo/tags?per_page=10" 2>/dev/null \
+			| jq -r '.[0].name // empty' 2>/dev/null || echo "")
+	fi
+
+	_parse_version "$tag"
+}
+
+# Obtiene la versión candidata del gestor de paquetes
+_get_remote_pkg_version() {
+	local pkg="${1:?Usage: _get_remote_pkg_version <package>}"
+	case "$PM" in
+		apt)    apt-cache policy "$pkg" 2>/dev/null | grep 'Candidate:' | awk '{print $2}' | head -1 ;;
+		dnf)    dnf info "$pkg" 2>/dev/null | grep -i '^Version' | awk '{print $3}' | head -1 ;;
+		pacman) pacman -Si "$pkg" 2>/dev/null | grep -i '^Version' | awk '{print $3}' | head -1 ;;
+		zypper) zypper info "$pkg" 2>/dev/null | grep '^Version' | awk '{print $3}' | head -1 ;;
+		*)      echo "" ;;
+	esac
+}
+
+# Compara dos versiones semver. Returns: 0=igual, 1=v1>v2, 2=v1<v2, 3=error
+_compare_versions() {
+	local v1="$1" v2="$2"
+	[[ -z "$v1" || -z "$v2" ]] && return 3
+
+	# Quitar prefijo 'v'
+	v1="${v1#v}"; v2="${v2#v}"
+	[[ "$v1" == "$v2" ]] && return 0
+
+	local IFS=.
+	local -a pa pb
+	read -ra pa <<< "${v1//[^0-9.]/}"
+	read -ra pb <<< "${v2//[^0-9.]/}"
+	for ((i=0; i<${#pa[@]} || i<${#pb[@]}; i++)); do
+		local va="${pa[$i]:-0}"
+		local vb="${pb[$i]:-0}"
+		(( va > vb )) && return 1
+		(( va < vb )) && return 2
+	done
+	return 0
+}
+
+# Verifica si un tool necesita actualización.
+# Returns: 0=actualizado, 1=hay nueva versión, 2=no se pudo verificar
+_check_tool_needs_update() {
+	local binary="${1:?Usage: _check_tool_needs_update <binary> [remote_ver_fn]}"
+	local remote_ver_fn="${2:-}"
+
+	local installed_ver
+	installed_ver=$(_get_installed_version "$binary") || true
+	if [[ -z "$installed_ver" ]]; then
+		return 2  # no se pudo detectar versión instalada
+	fi
+
+	local remote_ver=""
+	if [[ -n "$remote_ver_fn" ]]; then
+		remote_ver=$(eval "$remote_ver_fn" 2>/dev/null) || true
+	fi
+
+	if [[ -z "$remote_ver" ]]; then
+		log_debug "No remote version available for $binary"
+		return 0  # asumir actualizado
+	fi
+
+	_compare_versions "$installed_ver" "$remote_ver"; local cmp=$?
+	if [[ $cmp -eq 0 || $cmp -eq 1 ]]; then
+		return 0  # actualizado o local más nuevo
+	fi
+	if [[ $cmp -eq 2 ]]; then
+		log_info "$binary: $installed_ver → $remote_ver"
+		return 1  # hay actualización
+	fi
+	return 0
+}
+
+# Verifica si un tool está instalado (método principal de detección)
+# Returns: 0=instalado (con versión en stdout), 1=no instalado
+_tool_detect() {
+	local binary="${1:?Usage: _tool_detect <binary>}"
+	if command -v "$binary" &>/dev/null; then
+		local ver
+		ver=$(_get_installed_version "$binary" "--version" "$binary") || true
+		echo "${ver:-unknown}"
+		return 0
+	fi
+	return 1
+}
+
+# ------------------------------------------------------------------
 # Version comparison helpers
 # ------------------------------------------------------------------
 # Consulta al gestor de paquetes la versión candidata (más nueva disponible)
@@ -293,6 +429,52 @@ _ver_compare() {
 		(( va < vb )) && { echo 2; return; }
 	done
 	echo 0
+}
+
+# ------------------------------------------------------------------
+# _do_install — ejecuta la instalación o actualización de un tool
+# ------------------------------------------------------------------
+_do_install() {
+	local module="$1" tool="$2" install_cmd="$3" ver_cmd="$4"
+	local install_script="$CORE_HOME/modules/$module/install.sh"
+
+	log_step "Instalando $tool..."
+	_ensure_cmds curl wget git jq
+
+	# Detectar dependencias por el comando de instalación
+	if [[ "$install_cmd" == *"pip3"* || "$install_cmd" == *"pip install"* ]]; then _ensure_cmds pip3; fi
+	if [[ "$install_cmd" == *"npm install"* || "$install_cmd" == *"npx"* ]]; then _ensure_cmds npm; fi
+	if [[ "$install_cmd" == *"go install"* ]]; then _ensure_cmds go; fi
+	if [[ "$install_cmd" == *"make"* ]]; then _ensure_cmds make; fi
+
+	local ok=0
+	if [[ -f "$install_script" ]]; then
+		if bash "$install_script" "$tool"; then
+			ok=1
+		else
+			log_error "Failed to install $tool"
+			return 1
+		fi
+	elif [[ -n "$install_cmd" && "$install_cmd" != "null" ]]; then
+		log_info "Running: $install_cmd"
+		if eval "$install_cmd"; then
+			ok=1
+		else
+			log_error "Failed to install $tool"
+			return 1
+		fi
+	else
+		log_warn "No install method for $tool"
+		return 1
+	fi
+
+	if [[ $ok -eq 1 ]]; then
+		local version=""
+		version=$(_tool_detect "$tool") || version=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
+		mark_module_tool_installed "$module" "$tool" "$version"
+		log_success "$tool instalado ($version)"
+	fi
+	return 0
 }
 
 # ------------------------------------------------------------------
@@ -362,10 +544,9 @@ module_install() {
 		# ──────────────────────────────────────────────────
 		# CASO A: Tool ya instalado en el sistema
 		# ──────────────────────────────────────────────────
-		if command -v "$tool" &>/dev/null; then
-			local installed_ver
-			installed_ver=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
-
+		local installed_ver
+		installed_ver=$(_tool_detect "$tool") || true
+		if [[ -n "$installed_ver" ]]; then
 			# Registrar en estado si no está ya registrado
 			if ! tool_is_installed "$module" "$tool" 2>/dev/null; then
 				mark_module_tool_installed "$module" "$tool" "$installed_ver"
@@ -379,50 +560,52 @@ module_install() {
 
 			# Modo --upgrade: buscar versión más nueva
 			log_step "Buscando actualizaciones para $tool ($installed_ver)..."
-			local candidate_ver=""
-			local pkg_name="${tool}"
 
-			# Intentar obtener la versión candidata del gestor de paquetes
-			# Primero buscar el nombre del paquete (puede diferir del nombre del tool)
+			# Mapear nombre de tool → paquete del sistema / repo GitHub
+			local pkg_name="" gh_repo=""
 			case "$tool" in
-				node)   pkg_name="nodejs" ;;
-				python) pkg_name="python3" ;;
-				go)     pkg_name="golang"  ;;
-				neovim) pkg_name="neovim"  ;;
-				# Para tools instalados por curl/script, no hay package manager
-				ollama|qwen-code|deepseek-coder|aider|tabby|rust|zig|deno|bun|starship|zoxide|oh-my-zsh|powerlevel10k|helm|terraform|act|github-actions|gitlab-ci|drone|argo|dagger|tailwind|shadcn-ui|radix|framer-motion|nextui|daisyui|chatgpt|copilot)
+				# Package manager tools
+				node)           pkg_name="nodejs" ;;
+				python)         pkg_name="python3" ;;
+				go)             pkg_name="golang"  ;;
+				neovim)         pkg_name="neovim"  ;;
+				postgresql)     pkg_name="postgresql" ;;
+				mysql)          pkg_name="mysql-server" ;;
+				redis)          pkg_name="redis-server" ;;
+				sqlite)         pkg_name="sqlite3" ;;
+				ansible)        pkg_name="ansible" ;;
+				docker)         pkg_name="docker-ce" ;;
+				# GitHub release tools
+				claude-code)    gh_repo="anthropics/claude-code" ;;
+				opencode)       gh_repo="anomalyco/opencode" ;;
+				mimocode)       gh_repo="XiaomiMiMo/MiMo-Code" ;;
+				ollama)         gh_repo="ollama/ollama" ;;
+				hermes-agent)   gh_repo="NousResearch/hermes-agent" ;;
+				codegraph)      gh_repo="sourcegraph/codegraph" ;;
+				freebuff)       gh_repo="freebuff/freebuff-cli" ;;
+				qoder)          gh_repo="qoder/qoder" ;;
+				# npm tools — sin verificación remota automática
+				qwen-code|gemini-cli|mistral-vibe|codex|kimchi|gentle-ai|minimax-cli|gga|kimi-code|command-code|ctx7|openspec|cline)
+					pkg_name="" ;;
+				# tools sin verificación disponible
+				openclaude|openclaw|kilocode-cli|engram|pi|antigravity-cli)
 					pkg_name="" ;;
 			esac
 
-			[[ -n "$pkg_name" ]] && candidate_ver=$(_pm_candidate_version "$pkg_name")
+			local candidate_ver=""
+			if [[ -n "$pkg_name" ]]; then
+				candidate_ver=$(_get_remote_pkg_version "$pkg_name")
+			elif [[ -n "$gh_repo" ]]; then
+				candidate_ver=$(_get_remote_github_version "$gh_repo")
+			fi
 
-			# Si tenemos ambas versiones, comparar
+			# Comparar versiones
 			if [[ -n "$candidate_ver" && "$candidate_ver" != "$installed_ver" ]]; then
-				local cmp
-				cmp=$(_ver_compare "$candidate_ver" "$installed_ver")
-				if [[ "$cmp" -eq 1 ]]; then
+				_compare_versions "$candidate_ver" "$installed_ver"; local cmp=$?
+				if [[ $cmp -eq 2 ]]; then
 					log_info "Actualización disponible: $installed_ver → $candidate_ver"
 					if confirm "¿Actualizar $tool?"; then
-						log_step "Actualizando $tool..."
-						local install_script="$CORE_HOME/modules/$module/install.sh"
-						if [[ -f "$install_script" ]]; then
-							bash "$install_script" "$tool" && {
-								# Verificar nueva versión tras actualizar
-								local new_ver
-								new_ver=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
-								mark_module_tool_installed "$module" "$tool" "$new_ver"
-								log_success "$tool actualizado a $new_ver"
-							} || log_warn "Falló la actualización de $tool"
-						elif [[ -n "$install_cmd" && "$install_cmd" != "null" ]]; then
-							eval "$install_cmd" && {
-								local new_ver
-								new_ver=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
-								mark_module_tool_installed "$module" "$tool" "$new_ver"
-								log_success "$tool actualizado a $new_ver"
-							} || log_warn "Falló la actualización de $tool"
-						else
-							log_warn "No hay método de actualización para $tool"
-						fi
+						_do_install "$module" "$tool" "$install_cmd" "$ver_cmd" || log_warn "Falló la actualización de $tool"
 					else
 						log_info "Actualización de $tool cancelada."
 					fi
@@ -432,7 +615,6 @@ module_install() {
 			elif [[ -n "$candidate_ver" && "$candidate_ver" == "$installed_ver" ]]; then
 				log_success "$tool ya está en la última versión ($installed_ver)."
 			else
-				# No tenemos candidate del package manager
 				log_info "$tool instalado ($installed_ver). No se pudo verificar actualización automáticamente."
 			fi
 			continue
@@ -441,59 +623,7 @@ module_install() {
 		# ──────────────────────────────────────────────────
 		# CASO B: Tool NO instalado → instalar
 		# ──────────────────────────────────────────────────
-		log_step "Instalando $module/$tool..."
-
-		# Auto-instalar prerequisitos del sistema
-		_ensure_cmds curl wget git jq
-
-		# Detectar dependencias por el comando de instalación
-		if [[ "$install_cmd" == *"pip3"* || "$install_cmd" == *"pip install"* ]]; then
-			_ensure_cmds pip3
-		fi
-		if [[ "$install_cmd" == *"npm install"* || "$install_cmd" == *"npx"* ]]; then
-			_ensure_cmds npm
-		fi
-		if [[ "$install_cmd" == *"go install"* ]]; then
-			_ensure_cmds go
-		fi
-		if [[ "$install_cmd" == *"make"* ]]; then
-			_ensure_cmds make
-		fi
-		if [[ "$install_cmd" == *"go install"* ]]; then
-			_ensure_cmds go
-		fi
-		if [[ "$install_cmd" == *"make"* ]]; then
-			_ensure_cmds make
-		fi
-
-		# Ejecutar script de instalación o comando inline
-		local ok=0
-		local install_script="$CORE_HOME/modules/$module/install.sh"
-		if [[ -f "$install_script" ]]; then
-			if bash "$install_script" "$tool"; then
-				ok=1
-			else
-				log_error "Failed to install $tool"
-				return 1
-			fi
-		elif [[ -n "$install_cmd" && "$install_cmd" != "null" ]]; then
-			log_info "Running: $install_cmd"
-			if eval "$install_cmd"; then
-				ok=1
-			else
-				log_error "Failed to install $tool"
-				return 1
-			fi
-		else
-			log_warn "No install method for $module/$tool"
-		fi
-
-		if [[ $ok -eq 1 ]]; then
-			local version=""
-			[[ -n "$ver_cmd" ]] && version=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
-			mark_module_tool_installed "$module" "$tool" "$version"
-			log_success "Installed $tool ($version)"
-		fi
+		_do_install "$module" "$tool" "$install_cmd" "$ver_cmd" || { log_error "Installation failed"; return 1; }
 	done
 
 	module_verify "$module"
