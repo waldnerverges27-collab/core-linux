@@ -3,22 +3,27 @@ set -euo pipefail
 
 # Self-update mechanism for core-linux
 # Works with git repos AND piped (curl | bash) installs.
-# Detects updates by comparing commit SHA, not just version string.
+# All GitHub calls use short timeouts to avoid hanging.
 
 CORE_HOME="${CORE_HOME:-$HOME/.local/share/core-linux}"
 CORE_BIN="${CORE_BIN:-$HOME/.local/bin}"
 CORE_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/core-linux"
 CORE_STATE_FILE="${CORE_STATE_FILE:-$CORE_STATE_DIR/installed.json}"
-REPO_API="https://api.github.com/repos/waldnerverges27-collab/core-linux"
-RAW_BASE="https://raw.githubusercontent.com/waldnerverges27-collab/core-linux/main"
-REPO_TARBALL="https://github.com/waldnerverges27-collab/core-linux/archive/refs/heads/main.tar.gz"
+
+REPO="waldnerverges27-collab/core-linux"
+RAW_BASE="https://raw.githubusercontent.com/$REPO/main"
+REPO_API="https://api.github.com/repos/$REPO"
+REPO_TARBALL="https://github.com/$REPO/archive/refs/heads/main.tar.gz"
+
+# All curl calls timeout after 5s connect + 10s total
+CURL="curl -fsSL --connect-timeout 5 --max-time 10"
 
 source "$CORE_HOME/lib/utils/logger.sh"
 source "$CORE_HOME/lib/utils/prompt.sh"
 source "$CORE_HOME/lib/utils/fs.sh"
 
 # ------------------------------------------------------------------
-# Git-like helpers
+# Version helpers (single network call each — called sparingly)
 # ------------------------------------------------------------------
 _get_local_version() {
 	local ver="1.0.0"
@@ -28,16 +33,21 @@ _get_local_version() {
 	echo "$ver"
 }
 
-# Returns the SHA of the last commit we synced to (stored in state)
+_get_remote_version() {
+	$CURL "$RAW_BASE/core.conf.example" 2>/dev/null | grep -E '^version' | head -1 | cut -d'"' -f2 || echo ""
+}
+
+_get_remote_sha() {
+	$CURL "$REPO_API/commits/main" 2>/dev/null | jq -r '.sha // ""' 2>/dev/null || echo ""
+}
+
 _get_last_commit_sha() {
 	jq -r '._meta.last_update_sha // ""' "$CORE_STATE_FILE" 2>/dev/null || echo ""
 }
 
-# Stores the commit SHA after a successful update
 _set_last_commit_sha() {
 	local sha="${1:?Usage: _set_last_commit_sha <sha>}"
-	local tmp
-	tmp=$(mktemp)
+	local tmp; tmp=$(mktemp)
 	if jq ". + {\"_meta\": {\"last_update_sha\": \"$sha\"}}" "$CORE_STATE_FILE" > "$tmp" 2>/dev/null; then
 		mv "$tmp" "$CORE_STATE_FILE"
 	else
@@ -45,18 +55,8 @@ _set_last_commit_sha() {
 	fi
 }
 
-# Fetches the latest commit SHA from GitHub default branch
-_get_remote_sha() {
-	curl -fsSL "$REPO_API/commits/main" 2>/dev/null | jq -r '.sha // ""' 2>/dev/null || echo ""
-}
-
-# Fetches the remote version string
-_get_remote_version() {
-	curl -fsSL "$RAW_BASE/core.conf.example" 2>/dev/null | grep -E '^version' | head -1 | cut -d'"' -f2 || echo ""
-}
-
 # ------------------------------------------------------------------
-# Changelog
+# Changelog (single API call)
 # ------------------------------------------------------------------
 _show_changelog() {
 	log_info "Recent changes:"
@@ -64,11 +64,11 @@ _show_changelog() {
 		cd "$CORE_HOME"
 		git log --oneline HEAD..origin/main 2>/dev/null | head -20 || true
 	else
-		# Get commits since our last known SHA, or last 10
+		# Show latest commits via GitHub API
 		local since_sha
 		since_sha=$(_get_last_commit_sha)
 		if [[ -n "$since_sha" ]]; then
-			curl -fsSL "$REPO_API/commits?per_page=20&sha=main" 2>/dev/null \
+			$CURL "$REPO_API/commits?per_page=20&sha=main" 2>/dev/null \
 				| jq -r --arg sha "$since_sha" '
 					[.[] | select(.sha != $sha)] as $commits
 					| if ($commits | length) > 0
@@ -77,14 +77,14 @@ _show_changelog() {
 					  end
 				' 2>/dev/null | head -10 || echo "  (could not fetch changelog)"
 		else
-			curl -fsSL "$REPO_API/commits?per_page=10&sha=main" 2>/dev/null \
+			$CURL "$REPO_API/commits?per_page=10&sha=main" 2>/dev/null \
 				| jq -r '.[] | "  \(.sha[:7]) \(.commit.message | split("\n")[0])"' 2>/dev/null | head -10 || echo "  (could not fetch changelog)"
 		fi
 	fi
 }
 
 # ------------------------------------------------------------------
-# Update via git pull (fast path)
+# Update via git pull
 # ------------------------------------------------------------------
 _git_update() {
 	cd "$CORE_HOME"
@@ -92,21 +92,11 @@ _git_update() {
 
 	local behind
 	behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
-	if [[ "$behind" -eq 0 ]]; then
-		return 0
-	fi
+	[[ "$behind" -eq 0 ]] && return 0
 
-	log_info "Updates available ($behind commits behind)"
-	_show_changelog
-	echo ""
-	if ! confirm "Apply updates?"; then
-		log_info "Update cancelled."
-		return 0
-	fi
+	log_info "Downloading $behind new commits..."
+	git pull origin main 2>/dev/null || { log_error "Git pull failed"; return 1; }
 
-	git pull origin main 2>/dev/null || { log_error "Git pull failed (merge conflict?)"; return 1; }
-
-	# Record SHA
 	local new_sha
 	new_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
 	[[ -n "$new_sha" ]] && _set_last_commit_sha "$new_sha"
@@ -114,31 +104,16 @@ _git_update() {
 }
 
 # ------------------------------------------------------------------
-# Update via tarball download (universal fallback)
+# Update via tarball (fallback universal)
 # ------------------------------------------------------------------
 _tarball_update() {
-	log_step "Downloading latest core-linux from GitHub..."
-	local tmpdir
-	tmpdir=$(mktemp -d)
+	log_step "Downloading latest version..."
+	local tmpdir; tmpdir=$(mktemp -d)
 
-	if ! curl -fsSL "$REPO_TARBALL" 2>/dev/null \
-		| tar -xz -C "$tmpdir" --strip=1 2>/dev/null; then
+	if ! $CURL "$REPO_TARBALL" | tar -xz -C "$tmpdir" --strip=1 2>/dev/null; then
 		rm -rf "$tmpdir"
-		log_error "Failed to download latest version."
+		log_error "Download failed. Check your connection."
 		return 1
-	fi
-
-	local cur_ver new_ver
-	cur_ver=$(_get_local_version)
-	new_ver=$(grep -E '^version' "$tmpdir/core.conf.example" 2>/dev/null | head -1 | cut -d'"' -f2 || echo "?")
-	log_info "Version: $cur_ver → $new_ver"
-
-	_show_changelog
-	echo ""
-	if ! confirm "Apply updates?"; then
-		rm -rf "$tmpdir"
-		log_info "Update cancelled."
-		return 0
 	fi
 
 	log_step "Updating framework files..."
@@ -151,11 +126,8 @@ _tarball_update() {
 	cp    "$tmpdir/core.conf.example" "$CORE_HOME/core.conf.example" 2>/dev/null || true
 	chmod +x "$CORE_HOME/core"
 
-	# Record update SHA
-	local new_sha
-	new_sha=$(_get_remote_sha)
+	local new_sha; new_sha=$(_get_remote_sha)
 	[[ -n "$new_sha" ]] && _set_last_commit_sha "$new_sha"
-
 	rm -rf "$tmpdir"
 	return 0
 }
@@ -164,81 +136,23 @@ _tarball_update() {
 # Rebuild TUI after update
 # ------------------------------------------------------------------
 _rebuild_tui() {
-	if ! command -v go &>/dev/null; then
-		log_info "Go not available; skipping TUI rebuild."
-		return 0
-	fi
+	command -v go &>/dev/null || { log_info "Go no disponible, saltando reconstrucción TUI."; return 0; }
+	[[ -f "$CORE_HOME/cmd/core-tui/main.go" ]] || { log_info "Fuente TUI no encontrada."; return 0; }
 
-	local tui_src="$CORE_HOME/cmd/core-tui"
-	if [[ ! -f "$tui_src/main.go" ]]; then
-		log_info "TUI source not found at $tui_src; skipping rebuild."
-		return 0
-	fi
-
-	log_step "Rebuilding TUI..."
-	cd "$tui_src"
+	log_step "Reconstruyendo TUI..."
+	cd "$CORE_HOME/cmd/core-tui"
 	go mod tidy 2>/dev/null || true
 	if go build -ldflags="-s -w" -o core-tui . 2>/dev/null; then
 		cp core-tui "$CORE_HOME/core-tui"
 		ln -sf "$CORE_HOME/core-tui" "$CORE_BIN/core-tui" 2>/dev/null || true
-		log_success "TUI rebuilt."
+		log_success "TUI reconstruida."
 	else
-		log_warn "TUI rebuild failed — try installing Go or run 'core update --no-tui'."
+		log_warn "Falló la reconstrucción de la TUI."
 	fi
 }
 
 # ------------------------------------------------------------------
-# Check if there are pending updates
-# Returns 0 if up to date, 1 if update available, 2 if error
-# ------------------------------------------------------------------
-_check_update_available() {
-	local cur_ver remote_ver local_sha remote_sha
-
-	cur_ver=$(_get_local_version)
-	remote_ver=$(_get_remote_version)
-	if [[ -z "$remote_ver" ]]; then
-		log_warn "Could not reach GitHub. Check your internet connection."
-		return 2
-	fi
-
-	# If version strings differ, update is definitely available
-	if [[ "$remote_ver" != "$cur_ver" ]]; then
-		return 1
-	fi
-
-	# Same version — compare commit SHAs
-	if [[ -d "$CORE_HOME/.git" ]]; then
-		cd "$CORE_HOME"
-		git fetch origin 2>/dev/null || true
-		local behind
-		behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
-		if [[ "$behind" -gt 0 ]]; then
-			return 1
-		fi
-		return 0
-	fi
-
-	# Tarball path: compare remote SHA with last known SHA
-	remote_sha=$(_get_remote_sha)
-	[[ -z "$remote_sha" ]] && return 2
-
-	local_sha=$(_get_last_commit_sha)
-	if [[ -n "$local_sha" && "$local_sha" != "$remote_sha" ]]; then
-		return 1
-	fi
-
-	# No known last SHA? Compare version string-based freshness
-	if [[ -z "$local_sha" ]]; then
-		# We have no record of updating before — assume current is newest
-		# Store it so next time we can compare
-		_set_last_commit_sha "$remote_sha"
-	fi
-
-	return 0
-}
-
-# ------------------------------------------------------------------
-# Public entry point
+# self_update — entry point
 # ------------------------------------------------------------------
 self_update() {
 	local check_only=0
@@ -254,47 +168,82 @@ self_update() {
 		esac
 	done
 
-	log_step "Checking for updates..."
-
+	# ── Obtener versiones (UNA llamada remota) ──
 	local cur_ver remote_ver
 	cur_ver=$(_get_local_version)
 	remote_ver=$(_get_remote_version)
 
-	_check_update_available; local rc=$?
+	log_step "Buscando actualizaciones..."
+	log_info "Versión local:  $cur_ver"
 
-	if [[ $rc -eq 2 ]]; then
-		return 1   # network error — already reported
+	# ── Error de red? ──
+	if [[ -z "$remote_ver" ]]; then
+		log_warn "No se pudo contactar a GitHub (verifica tu conexión)."
+		log_info "Si el problema persiste, reinstala con:"
+		log_info "  curl -fsSL $RAW_BASE/install.sh | bash"
+		return 1
 	fi
 
-	if [[ $rc -eq 0 ]] && [[ $force -eq 0 ]]; then
-		log_success "Already up to date (v$cur_ver)."
+	log_info "Versión remota: $remote_ver"
+
+	# ── Determinar si hay actualización ──
+	local update_needed=0  # 0=no, 1=sí
+
+	# 1. Versión diferente?
+	if [[ "$remote_ver" != "$cur_ver" ]]; then
+		update_needed=1
+	fi
+
+	# 2. Misma versión, mismo SHA? (solo si no es git)
+	if [[ $update_needed -eq 0 ]] && [[ ! -d "$CORE_HOME/.git" ]]; then
+		local remote_sha local_sha
+		remote_sha=$(_get_remote_sha)
+		if [[ -n "$remote_sha" ]]; then
+			local_sha=$(_get_last_commit_sha)
+			if { [[ -z "$local_sha" ]] || [[ "$local_sha" != "$remote_sha" ]]; }; then
+				update_needed=1
+			fi
+			# Si es primera vez, guardar SHA para futuras comparaciones
+			[[ -z "$local_sha" ]] && _set_last_commit_sha "$remote_sha"
+		fi
+	fi
+
+	# 3. Misma versión, mismo SHA? (git)
+	if [[ $update_needed -eq 0 ]] && [[ -d "$CORE_HOME/.git" ]]; then
+		cd "$CORE_HOME"
+		git fetch origin 2>/dev/null || true
+		local behind
+		behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
+		[[ "$behind" -gt 0 ]] && update_needed=1
+	fi
+
+	# ── Resultado ──
+	if [[ $update_needed -eq 0 ]] && [[ $force -eq 0 ]]; then
+		log_success "Ya estás al día (v$cur_ver)."
 		return 0
 	fi
 
-	if [[ $rc -eq 0 ]] && [[ $force -eq 1 ]]; then
-		log_info "Forcing update (v$cur_ver)..."
-	fi
-
-	if [[ $rc -eq 1 ]]; then
-		log_info "Update available: v$cur_ver → v${remote_ver:-latest}"
+	if [[ $force -eq 1 ]]; then
+		log_info "Forzando actualización (v$cur_ver)..."
+	else
+		log_info "Actualización disponible: v$cur_ver → v$remote_ver"
 	fi
 
 	_show_changelog
 
 	if [[ $check_only -eq 1 ]]; then
-		log_info "Run 'core update' to upgrade."
+		log_info "Ejecuta 'core update' para actualizar."
 		return 0
 	fi
 
 	echo ""
-	if ! confirm "Apply updates?"; then
-		log_info "Update cancelled."
+	if ! confirm "¿Aplicar actualización?"; then
+		log_info "Actualización cancelada."
 		return 0
 	fi
 
-	# --- Apply ---
-	log_step "Updating core-linux..."
-
+	# ── Aplicar ──
+	log_step "Actualizando core-linux..."
 	local ok=0
 	if [[ -d "$CORE_HOME/.git" ]]; then
 		_git_update && ok=1
@@ -303,29 +252,31 @@ self_update() {
 	fi
 
 	if [[ $ok -eq 0 ]]; then
-		log_error "Update failed."
+		log_error "Actualización fallida."
 		return 1
 	fi
 
-	# Rebuild TUI
-	if [[ $no_tui -eq 0 ]]; then
-		_rebuild_tui
-	fi
-
-	log_success "Updated to v$(_get_local_version)."
-	return 0
+	[[ $no_tui -eq 0 ]] && _rebuild_tui
+	log_success "Actualizado a v$(_get_local_version)."
+	version_check
 }
 
 # ------------------------------------------------------------------
-# Startup version check (non-blocking, one-liner)
+# Startup version check (una línea, silenciosa en error)
 # ------------------------------------------------------------------
 version_check() {
 	local cur_ver="${1:-$(_get_local_version)}"
-	_check_update_available 2>/dev/null; local rc=$?
-	if [[ $rc -eq 1 ]]; then
-		local remote_ver
-		remote_ver=$(_get_remote_version 2>/dev/null || echo "latest")
-		log_info "Update available: v$cur_ver → v$remote_ver"
-		log_info "Run 'core update' to upgrade."
+	local remote_ver
+	remote_ver=$(_get_remote_version 2>/dev/null) || true
+	[[ -z "$remote_ver" ]] && return 0
+	if [[ "$remote_ver" != "$cur_ver" ]]; then
+		log_info "Actualización disponible: v$cur_ver → v$remote_ver"
+		log_info "Ejecuta 'core update' para actualizar."
+	elif [[ -d "$CORE_HOME/.git" ]]; then
+		cd "$CORE_HOME" 2>/dev/null || true
+		git fetch origin 2>/dev/null || true
+		local behind
+		behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
+		[[ "$behind" -gt 0 ]] && log_info "Nuevos commits disponibles. Ejecuta 'core update'."
 	fi
 }
