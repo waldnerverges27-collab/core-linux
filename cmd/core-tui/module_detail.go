@@ -12,7 +12,7 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	tools := batchLoadTools(a.selectedModule)
 	toolCount := len(tools)
 
-	// Update scroll offset for next render
+	// Move cursor
 	if msg.String() == "up" || msg.String() == "k" {
 		if a.toolIndex > 0 {
 			a.toolIndex--
@@ -22,20 +22,18 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.toolIndex++
 		}
 	}
-	// Recalculate visible range to keep cursor in view
-	const headerH = 6
-	maxVis := a.height - headerH
-	if maxVis < 3 {
-		maxVis = 3
+
+	// Recalculate scroll — keep cursor visible
+	// Terminal real estate: height - title(3) - statusbar(1) - padding(1) - help(1)
+	maxVis := a.height - 6
+	if maxVis < 2 {
+		maxVis = 2
 	}
 	if a.toolIndex < a.toolScroll {
 		a.toolScroll = a.toolIndex
 	}
-	if a.toolIndex >= a.toolScroll+maxVis {
+	if toolCount > 0 && a.toolIndex >= a.toolScroll+maxVis {
 		a.toolScroll = a.toolIndex - maxVis + 1
-	}
-	if a.toolScroll < 0 {
-		a.toolScroll = 0
 	}
 	if a.toolScroll > toolCount-maxVis {
 		a.toolScroll = toolCount - maxVis
@@ -95,10 +93,10 @@ func (a *App) viewModuleDetail() string {
 	}
 
 	// Calculate visible range
-	const headerLines = 6
-	maxVis := a.height - headerLines
-	if maxVis < 3 {
-		maxVis = 3
+	// Available lines: height - title(3) - statusbar(1) - padding(1) - help(1) = height-6
+	maxVis := a.height - 6
+	if maxVis < 2 {
+		maxVis = 2
 	}
 	start := a.toolScroll
 	end := start + maxVis
@@ -106,10 +104,10 @@ func (a *App) viewModuleDetail() string {
 		end = len(tools)
 	}
 
-	// Show scroll indicators
+	// Show scroll indicator at top
 	if start > 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... arriba ..."))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	for i, tool := range tools[start:end] {
@@ -150,13 +148,12 @@ func (a *App) viewModuleDetail() string {
 				Render(fmt.Sprintf("     [%s]", strings.Join(tool.Tags, ", "))))
 			b.WriteString("\n")
 		}
-		b.WriteString("\n")
 	}
 
 	// Show scroll indicator at bottom
 	if end < len(tools) {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... abajo ..."))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")

@@ -76,10 +76,10 @@ func (a *App) viewModules() string {
 		return a.spinner.View() + " Loading modules..."
 	}
 
-	// Calculate visible range
-	maxVis := a.height - 6
-	if maxVis < 3 {
-		maxVis = 3
+	// Calculate visible range (height - title(2) - statusbar(1) - padding(1) - help(1) = height-5)
+	maxVis := a.height - 5
+	if maxVis < 2 {
+		maxVis = 2
 	}
 	start := a.moduleScroll
 	end := start + maxVis
@@ -89,7 +89,7 @@ func (a *App) viewModules() string {
 
 	if start > 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... arriba ..."))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	for i, mod := range mods[start:end] {
@@ -117,12 +117,12 @@ func (a *App) viewModules() string {
 		}
 
 		b.WriteString(line)
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	if end < len(mods) {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... abajo ..."))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
