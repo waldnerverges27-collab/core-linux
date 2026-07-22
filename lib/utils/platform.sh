@@ -46,7 +46,8 @@ detect_distro() {
 		. /etc/os-release
 		DISTRO_ID="${ID,,}"
 		DISTRO_VERSION_ID="${VERSION_ID:-}"
-		local id_like="${ID_LIKE,,}"
+		local id_like="${ID_LIKE:-}"
+		id_like="${id_like,,}"
 
 		case "$DISTRO_ID" in
 			ubuntu|debian|linuxmint|pop|elementary|neon|zorin|kali|deepin|uos)
@@ -79,7 +80,8 @@ detect_distro() {
 	# --- fallback: lsb-release ---
 	elif [[ -f /etc/lsb-release ]]; then
 		. /etc/lsb-release
-		DISTRO_ID="${DISTRIB_ID,,}"
+		DISTRO_ID="${DISTRIB_ID:-}"
+		DISTRO_ID="${DISTRO_ID,,}"
 		DISTRO_VERSION_ID="${DISTRIB_RELEASE:-}"
 		case "$DISTRO_ID" in
 			ubuntu|debian|linuxmint|pop) DISTRO_FAMILY="debian" ;;
