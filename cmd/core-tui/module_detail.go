@@ -11,23 +11,45 @@ import (
 func (a *App) updateModuleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	tools := batchLoadTools(a.selectedModule)
 	toolCount := len(tools)
-	if toolCount == 0 {
-		toolCount = 1
+
+	// Update scroll offset for next render
+	if msg.String() == "up" || msg.String() == "k" {
+		if a.toolIndex > 0 {
+			a.toolIndex--
+		}
+	} else if msg.String() == "down" || msg.String() == "j" {
+		if toolCount > 0 && a.toolIndex < toolCount-1 {
+			a.toolIndex++
+		}
+	}
+	// Recalculate visible range to keep cursor in view
+	const headerH = 6
+	maxVis := a.height - headerH
+	if maxVis < 3 {
+		maxVis = 3
+	}
+	if a.toolIndex < a.toolScroll {
+		a.toolScroll = a.toolIndex
+	}
+	if a.toolIndex >= a.toolScroll+maxVis {
+		a.toolScroll = a.toolIndex - maxVis + 1
+	}
+	if a.toolScroll < 0 {
+		a.toolScroll = 0
+	}
+	if a.toolScroll > toolCount-maxVis {
+		a.toolScroll = toolCount - maxVis
+	}
+	if a.toolScroll < 0 {
+		a.toolScroll = 0
 	}
 
 	switch {
 	case keyMatches(msg, "q"):
 		return a, tea.Quit
 	case keyMatches(msg, "esc"):
+		a.toolScroll = 0
 		a.currentView = viewModules
-	case keyMatches(msg, "up", "k"):
-		if a.toolIndex > 0 {
-			a.toolIndex--
-		}
-	case keyMatches(msg, "down", "j"):
-		if a.toolIndex < toolCount-1 {
-			a.toolIndex++
-		}
 	case keyMatches(msg, "i"):
 		a.installing = true
 		a.installLog = []string{fmt.Sprintf("Installing %s...", a.selectedModule)}
@@ -72,7 +94,26 @@ func (a *App) viewModuleDetail() string {
 		return b.String()
 	}
 
-	for i, tool := range tools {
+	// Calculate visible range
+	const headerLines = 6
+	maxVis := a.height - headerLines
+	if maxVis < 3 {
+		maxVis = 3
+	}
+	start := a.toolScroll
+	end := start + maxVis
+	if end > len(tools) {
+		end = len(tools)
+	}
+
+	// Show scroll indicators
+	if start > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... arriba ..."))
+		b.WriteString("\n\n")
+	}
+
+	for i, tool := range tools[start:end] {
+		absIdx := start + i
 		status := "✗"
 		statusColor := currentTheme.Muted
 		verInfo := ""
@@ -94,7 +135,7 @@ func (a *App) viewModuleDetail() string {
 			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(verInfo),
 		)
 
-		if i == a.toolIndex {
+		if absIdx == a.toolIndex {
 			line = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(currentTheme.Primary)).
 				Background(lipgloss.Color(currentTheme.Surface)).
@@ -110,6 +151,12 @@ func (a *App) viewModuleDetail() string {
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")
+	}
+
+	// Show scroll indicator at bottom
+	if end < len(tools) {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... abajo ..."))
+		b.WriteString("\n\n")
 	}
 
 	b.WriteString("\n")

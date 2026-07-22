@@ -39,8 +39,11 @@ type App struct {
 	// Module data
 	modules         []string
 	moduleIndex     int
+	moduleScroll    int  // scroll offset for module list
 	selectedModule  string
 	toolIndex       int
+	toolScroll      int  // scroll offset for tools list
+	helpScroll      int  // scroll offset for help view
 
 	// Install progress
 	installing      bool
@@ -64,6 +67,37 @@ type App struct {
 
 	// Loading
 	loading bool
+}
+
+// visibleRange calculates which slice of items to render based on
+// terminal height, scroll offset, and total item count.
+func visibleRange(cursor, total, termHeight, scrollOffset int) (int, int, int) {
+	const headerLines = 5
+	maxVisible := termHeight - headerLines
+	if maxVisible < 3 {
+		maxVisible = 3
+	}
+
+	if cursor < scrollOffset {
+		scrollOffset = cursor
+	}
+	if cursor >= scrollOffset+maxVisible {
+		scrollOffset = cursor - maxVisible + 1
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	if scrollOffset > total-maxVisible {
+		scrollOffset = total - maxVisible
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	end := scrollOffset + maxVisible
+	if end > total {
+		end = total
+	}
+	return scrollOffset, end, scrollOffset
 }
 
 // NewApp creates and returns a new App model
