@@ -250,11 +250,66 @@ _ensure_cmds() {
 }
 
 # ------------------------------------------------------------------
+# Version comparison helpers
+# ------------------------------------------------------------------
+# Consulta al gestor de paquetes la versión candidata (más nueva disponible)
+_pm_candidate_version() {
+	local pkg="$1"
+	case "$PM" in
+		apt)
+			apt-cache policy "$pkg" 2>/dev/null | grep 'Candidato' | awk '{print $2}'
+			;;
+		dnf)
+			dnf info "$pkg" 2>/dev/null | grep -i '^Version' | awk '{print $3}'
+			;;
+		pacman)
+			pacman -Si "$pkg" 2>/dev/null | grep -i '^Version' | awk '{print $3}'
+			;;
+		zypper)
+			zypper info "$pkg" 2>/dev/null | grep '^Version' | awk '{print $3}'
+			;;
+		xbps-install)
+			xbps-query -S "$pkg" 2>/dev/null | head -1 | awk '{print $2}'
+			;;
+		apk)
+			apk search -e "$pkg" 2>/dev/null | head -1 | cut -d'-' -f2-
+			;;
+		*) echo "" ;;
+	esac
+}
+
+# Comparación semver simple: 0 = igual, 1 = a > b, 2 = a < b
+_ver_compare() {
+	local a="$1" b="$2"
+	[[ "$a" == "$b" ]] && { echo 0; return; }
+	local IFS=.
+	local -a pa pb
+	read -ra pa <<< "${a//[^0-9.]/}"
+	read -ra pb <<< "${b//[^0-9.]/}"
+	for ((i=0; i<${#pa[@]} || i<${#pb[@]}; i++)); do
+		local va="${pa[$i]:-0}"
+		local vb="${pb[$i]:-0}"
+		(( va > vb )) && { echo 1; return; }
+		(( va < vb )) && { echo 2; return; }
+	done
+	echo 0
+}
+
+# ------------------------------------------------------------------
 # module_install
 # ------------------------------------------------------------------
 module_install() {
 	local module="${1:?Usage: module_install <module> [--tool1...]}"
-	shift
+	local upgrade_mode=0
+
+	# Extraer --upgrade antes de shift (si viene como primer flag)
+	if [[ "$module" == "--upgrade" ]]; then
+		upgrade_mode=1
+		module="${2:?Usage: module_install --upgrade <module> [--tool1...]}"
+		shift 2
+	else
+		shift
+	fi
 
 	module_exists "$module" || { log_error "Module $module not found"; return 1; }
 	check_conflicts "$module" || return 1
@@ -292,32 +347,104 @@ module_install() {
 
 	[[ ${#tools[@]} -eq 0 ]] && { log_warn "No tools defined for $module"; return 0; }
 
-	# Batch: extraer todos los install_cmd + version_cmd + tool names de una sola vez
+	# Batch: extraer todos los datos de los tools de una sola vez
 	local tools_json
 	tools_json=$(jq -c '[.tools[] | {name, flag, install, version_cmd}]' "$manifest" 2>/dev/null)
 
 	local tool
 	for tool in "${tools[@]}"; do
-		log_step "Installing $module/$tool..."
-
-		# Ya instalado?
-		if command -v "$tool" &>/dev/null; then
-			local existing_ver
-			existing_ver=$("$tool" --version 2>/dev/null || "$tool" version 2>/dev/null || echo "unknown")
-			log_info "$tool ya disponible ($existing_ver)"
-			mark_module_tool_installed "$module" "$tool" "$existing_ver"
-			log_success "$tool listo"
-			continue
-		fi
-
-		# Auto-instalar prerequisitos del sistema
-		_ensure_cmds curl wget git jq
-
-		# Extraer info del tool desde el JSON ya cargado
+		# Extraer info del tool
 		local tool_info install_cmd ver_cmd
 		tool_info=$(echo "$tools_json" | jq -c ".[] | select(.name == \"$tool\")" 2>/dev/null || echo "{}")
 		install_cmd=$(echo "$tool_info" | jq -r ".install[\"$DISTRO_ID\"] // .install[\"$DISTRO_FAMILY\"] // .install[\"default\"] // \"\"" 2>/dev/null || echo "")
 		ver_cmd=$(echo "$tool_info" | jq -r '.version_cmd // ""' 2>/dev/null || echo "")
+
+		# ──────────────────────────────────────────────────
+		# CASO A: Tool ya instalado en el sistema
+		# ──────────────────────────────────────────────────
+		if command -v "$tool" &>/dev/null; then
+			local installed_ver
+			installed_ver=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
+
+			# Registrar en estado si no está ya registrado
+			if ! tool_is_installed "$module" "$tool" 2>/dev/null; then
+				mark_module_tool_installed "$module" "$tool" "$installed_ver"
+			fi
+
+			# En modo normal (sin --upgrade): informar y continuar
+			if [[ $upgrade_mode -eq 0 ]]; then
+				log_info "$tool ya instalado ($installed_ver). Usa '--upgrade' para buscar actualizaciones."
+				continue
+			fi
+
+			# Modo --upgrade: buscar versión más nueva
+			log_step "Buscando actualizaciones para $tool ($installed_ver)..."
+			local candidate_ver=""
+			local pkg_name="${tool}"
+
+			# Intentar obtener la versión candidata del gestor de paquetes
+			# Primero buscar el nombre del paquete (puede diferir del nombre del tool)
+			case "$tool" in
+				node)   pkg_name="nodejs" ;;
+				python) pkg_name="python3" ;;
+				go)     pkg_name="golang"  ;;
+				neovim) pkg_name="neovim"  ;;
+				# Para tools instalados por curl/script, no hay package manager
+				ollama|qwen-code|deepseek-coder|aider|tabby|rust|zig|deno|bun|starship|zoxide|oh-my-zsh|powerlevel10k|helm|terraform|act|github-actions|gitlab-ci|drone|argo|dagger|tailwind|shadcn-ui|radix|framer-motion|nextui|daisyui|chatgpt|copilot)
+					pkg_name="" ;;
+			esac
+
+			[[ -n "$pkg_name" ]] && candidate_ver=$(_pm_candidate_version "$pkg_name")
+
+			# Si tenemos ambas versiones, comparar
+			if [[ -n "$candidate_ver" && "$candidate_ver" != "$installed_ver" ]]; then
+				local cmp
+				cmp=$(_ver_compare "$candidate_ver" "$installed_ver")
+				if [[ "$cmp" -eq 1 ]]; then
+					log_info "Actualización disponible: $installed_ver → $candidate_ver"
+					if confirm "¿Actualizar $tool?"; then
+						log_step "Actualizando $tool..."
+						local install_script="$CORE_HOME/modules/$module/install.sh"
+						if [[ -f "$install_script" ]]; then
+							bash "$install_script" "$tool" && {
+								# Verificar nueva versión tras actualizar
+								local new_ver
+								new_ver=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
+								mark_module_tool_installed "$module" "$tool" "$new_ver"
+								log_success "$tool actualizado a $new_ver"
+							} || log_warn "Falló la actualización de $tool"
+						elif [[ -n "$install_cmd" && "$install_cmd" != "null" ]]; then
+							eval "$install_cmd" && {
+								local new_ver
+								new_ver=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
+								mark_module_tool_installed "$module" "$tool" "$new_ver"
+								log_success "$tool actualizado a $new_ver"
+							} || log_warn "Falló la actualización de $tool"
+						else
+							log_warn "No hay método de actualización para $tool"
+						fi
+					else
+						log_info "Actualización de $tool cancelada."
+					fi
+				else
+					log_success "$tool ya está en la última versión ($installed_ver)."
+				fi
+			elif [[ -n "$candidate_ver" && "$candidate_ver" == "$installed_ver" ]]; then
+				log_success "$tool ya está en la última versión ($installed_ver)."
+			else
+				# No tenemos candidate del package manager
+				log_info "$tool instalado ($installed_ver). No se pudo verificar actualización automáticamente."
+			fi
+			continue
+		fi
+
+		# ──────────────────────────────────────────────────
+		# CASO B: Tool NO instalado → instalar
+		# ──────────────────────────────────────────────────
+		log_step "Instalando $module/$tool..."
+
+		# Auto-instalar prerequisitos del sistema
+		_ensure_cmds curl wget git jq
 
 		# Detectar dependencias por el comando de instalación
 		if [[ "$install_cmd" == *"pip3"* || "$install_cmd" == *"pip install"* ]]; then
@@ -325,6 +452,12 @@ module_install() {
 		fi
 		if [[ "$install_cmd" == *"npm install"* || "$install_cmd" == *"npx"* ]]; then
 			_ensure_cmds npm
+		fi
+		if [[ "$install_cmd" == *"go install"* ]]; then
+			_ensure_cmds go
+		fi
+		if [[ "$install_cmd" == *"make"* ]]; then
+			_ensure_cmds make
 		fi
 		if [[ "$install_cmd" == *"go install"* ]]; then
 			_ensure_cmds go
@@ -417,7 +550,7 @@ module_uninstall() {
 module_update() {
 	local module="${1:?Usage: module_update <module>}"
 	log_step "Actualizando $module..."
-	module_install "$module"
+	module_install --upgrade "$module"
 }
 
 module_reinstall() {

@@ -30,8 +30,9 @@ core-linux — Modular Development Environment
 
 Usage:
   core                          Launch TUI (or fallback bash TUI)
-  core install <module> [--tool...]  Install module/tools
-  core uninstall <module> [--tool...] Uninstall module/tools
+  core install <module> [--tool...]     Install module/tools (skips if installed)
+  core install --upgrade <module> [--tool...]  Check for tool updates and upgrade
+  core uninstall <module> [--tool...]   Uninstall module/tools
   core update                   Update core-linux framework itself
   core update --check           Check for updates without applying
   core update --force           Force reinstall even if same version
@@ -65,9 +66,13 @@ main() {
 			;;
 		install)
 			source "$CORE_HOME/lib/core/module_manager.sh"
-			local mod="${1:?$(log_error 'Usage: core install <module> [--tool...]' && exit 1)}"
-			shift
-			module_install "$mod" "$@"
+			if [[ "${1:-}" == "--upgrade" ]]; then
+				module_install --upgrade "$@"
+			else
+				local mod="${1:?$(log_error 'Usage: core install <module> [--tool...]' && exit 1)}"
+				shift
+				module_install "$mod" "$@"
+			fi
 			;;
 		uninstall)
 			source "$CORE_HOME/lib/core/module_manager.sh"
