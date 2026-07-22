@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# core-linux — One-liner install:
+#   curl -fsSL https://raw.githubusercontent.com/waldnerverges27-collab/core-linux/main/install.sh | bash
 set -euo pipefail
 
 CORE_HOME="${CORE_HOME:-$HOME/.local/share/core-linux}"
