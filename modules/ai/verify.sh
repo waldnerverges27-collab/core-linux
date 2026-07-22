@@ -2,7 +2,8 @@
 set -euo pipefail
 
 errors=0
-for cmd in ollama aider; do
+
+for cmd in qwen gemini claude vibe openclaude openclaw ollama codex opencode qoder kilo kimchi mimo engram codegraph pi antigravity gentle minimax gga hermes kimi command-code freebuff ctx7 openspec cline; do
 	if command -v "$cmd" &>/dev/null; then
 		echo "✔ $cmd found"
 	else
@@ -10,12 +11,5 @@ for cmd in ollama aider; do
 		errors=$((errors+1))
 	fi
 done
-# Check for npm packages
-for pkg in @chatgpt/cli @githubnext/github-copilot-cli; do
-	if npm list -g "$pkg" &>/dev/null; then
-		echo "✔ $pkg installed"
-	else
-		echo "✗ $pkg not installed"
-	fi
-done
+
 exit $errors

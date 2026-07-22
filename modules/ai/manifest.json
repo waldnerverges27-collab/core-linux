@@ -14,6 +14,93 @@
   },
   "tools": [
     {
+      "name": "qwen-code",
+      "flag": "--qwen-code",
+      "description": "Alibaba's AI coding assistant",
+      "version_cmd": "qwen --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g @qwen/qwen-code-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @qwen/qwen-code-cli"
+      },
+      "size_mb": 50,
+      "tags": ["ai", "code", "alibaba"]
+    },
+    {
+      "name": "gemini-cli",
+      "flag": "--gemini-cli",
+      "description": "Google's AI assistant with Gemini",
+      "version_cmd": "gemini --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g @google/gemini-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @google/gemini-cli"
+      },
+      "size_mb": 50,
+      "tags": ["ai", "google", "gemini"]
+    },
+    {
+      "name": "claude-code",
+      "flag": "--claude-code",
+      "description": "Anthropic's CLI tool with Claude AI",
+      "version_cmd": "claude --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "ubuntu": "curl -fsSL https://github.com/anthropics/claude-code/releases/latest/download/claude-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin claude",
+        "fedora": "curl -fsSL https://github.com/anthropics/claude-code/releases/latest/download/claude-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin claude",
+        "arch": "curl -fsSL https://github.com/anthropics/claude-code/releases/latest/download/claude-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin claude",
+        "default": "curl -fsSL https://github.com/anthropics/claude-code/releases/latest/download/claude-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin claude"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/claude"
+      },
+      "size_mb": 80,
+      "tags": ["ai", "anthropic", "claude"]
+    },
+    {
+      "name": "mistral-vibe",
+      "flag": "--mistral-vibe",
+      "description": "Command-line coding assistant powered by Mistral's models",
+      "version_cmd": "vibe --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g mistral-vibe-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g mistral-vibe-cli"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "mistral", "code"]
+    },
+    {
+      "name": "openclaude",
+      "flag": "--openclaude",
+      "description": "Open source Claude Code alternative",
+      "version_cmd": "openclaude --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/sst/OpenClaude/releases/latest/download/openclaude-linux-amd64 -o /usr/local/bin/openclaude && chmod +x /usr/local/bin/openclaude"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/openclaude"
+      },
+      "size_mb": 30,
+      "tags": ["ai", "open-source", "claude"]
+    },
+    {
+      "name": "openclaw",
+      "flag": "--openclaw",
+      "description": "Personal AI Assistant",
+      "version_cmd": "openclaw --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/OpenClaw/OpenClaw/releases/latest/download/openclaw-linux-amd64 -o /usr/local/bin/openclaw && chmod +x /usr/local/bin/openclaw"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/openclaw"
+      },
+      "size_mb": 30,
+      "tags": ["ai", "assistant"]
+    },
+    {
       "name": "ollama",
       "flag": "--ollama",
       "description": "Run open-source LLMs locally",
@@ -21,113 +108,297 @@
       "install": {
         "ubuntu": "curl -fsSL https://ollama.com/install.sh | sh",
         "fedora": "curl -fsSL https://ollama.com/install.sh | sh",
-        "arch": "yay -S --noconfirm ollama-bin 2>/dev/null || sudo pacman -S --noconfirm ollama",
+        "arch": "curl -fsSL https://ollama.com/install.sh | sh",
         "opensuse": "curl -fsSL https://ollama.com/install.sh | sh",
         "default": "curl -fsSL https://ollama.com/install.sh | sh"
       },
       "uninstall": {
-        "ubuntu": "sudo systemctl stop ollama && sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama",
-        "arch": "sudo pacman -Rns --noconfirm ollama 2>/dev/null || yay -Rns --noconfirm ollama-bin 2>/dev/null || true",
+        "ubuntu": "sudo systemctl stop ollama 2>/dev/null; sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama",
         "default": "sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama"
       },
       "post_install": "systemctl --user enable ollama 2>/dev/null || true",
       "size_mb": 500,
-      "tags": ["llm", "local", "inference"]
+      "tags": ["ai", "llm", "local", "inference"]
     },
     {
-      "name": "qwen-code",
-      "flag": "--qwen-code",
-      "description": "Qwen2.5-Coder: code-specific LLM via Ollama",
-      "version_cmd": "ollama list 2>/dev/null | grep qwen2.5-coder || echo 'not pulled'",
+      "name": "codex",
+      "flag": "--codex",
+      "description": "OpenAI coding agent that runs locally on your computer",
+      "version_cmd": "codex --version 2>/dev/null || echo 'latest'",
       "install": {
-        "ubuntu": "ollama pull qwen2.5-coder:7b 2>/dev/null || curl -fsSL https://ollama.com/install.sh | sh && ollama pull qwen2.5-coder:7b",
-        "arch": "ollama pull qwen2.5-coder:7b",
-        "default": "ollama pull qwen2.5-coder:7b"
+        "default": "npm install -g @openai/codex"
       },
       "uninstall": {
-        "default": "ollama rm qwen2.5-coder:7b 2>/dev/null || true"
+        "default": "npm uninstall -g @openai/codex"
       },
-      "size_mb": 4000,
-      "tags": ["llm", "code", "local"]
+      "size_mb": 60,
+      "tags": ["ai", "openai", "code"]
     },
     {
-      "name": "deepseek-coder",
-      "flag": "--deepseek-coder",
-      "description": "DeepSeek Coder via Ollama",
-      "version_cmd": "ollama list 2>/dev/null | grep deepseek-coder || echo 'not pulled'",
+      "name": "opencode",
+      "flag": "--opencode",
+      "description": "Open-source agent that helps you write code in your terminal",
+      "version_cmd": "opencode --version 2>/dev/null || echo 'latest'",
       "install": {
-        "ubuntu": "ollama pull deepseek-coder:6.7b 2>/dev/null || (curl -fsSL https://ollama.com/install.sh | sh && ollama pull deepseek-coder:6.7b)",
-        "default": "ollama pull deepseek-coder:6.7b"
+        "default": "curl -fsSL https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin opencode && chmod +x /usr/local/bin/opencode"
       },
       "uninstall": {
-        "default": "ollama rm deepseek-coder:6.7b 2>/dev/null || true"
+        "default": "sudo rm -f /usr/local/bin/opencode"
       },
-      "size_mb": 3500,
-      "tags": ["llm", "code", "local"]
+      "size_mb": 40,
+      "tags": ["ai", "open-source", "code"]
     },
     {
-      "name": "chatgpt",
-      "flag": "--chatgpt",
-      "description": "OpenAI ChatGPT CLI client",
-      "version_cmd": "chatgpt --version 2>/dev/null || echo 'cli'",
+      "name": "qoder",
+      "flag": "--qoder",
+      "description": "A terminal-native AI coding partner and agent engine",
+      "version_cmd": "qoder --version 2>/dev/null || echo 'latest'",
       "install": {
-        "ubuntu": "npm install -g @chatgpt/cli",
-        "arch": "yay -S --noconfirm chatgpt-cli 2>/dev/null || npm install -g @chatgpt/cli",
-        "default": "npm install -g @chatgpt/cli"
+        "default": "curl -fsSL https://github.com/qoder/qoder/releases/latest/download/qoder-linux-amd64 -o /usr/local/bin/qoder && chmod +x /usr/local/bin/qoder"
       },
       "uninstall": {
-        "default": "npm uninstall -g @chatgpt/cli"
+        "default": "sudo rm -f /usr/local/bin/qoder"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "code", "terminal"]
+    },
+    {
+      "name": "kilocode-cli",
+      "flag": "--kilocode-cli",
+      "description": "Open source coding agent for building with AI",
+      "version_cmd": "kilo --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/kilocode/kilocode-cli/releases/latest/download/kilocode-linux-amd64 -o /usr/local/bin/kilo && chmod +x /usr/local/bin/kilo"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/kilo"
+      },
+      "size_mb": 30,
+      "tags": ["ai", "code", "open-source"]
+    },
+    {
+      "name": "kimchi",
+      "flag": "--kimchi",
+      "description": "Terminal coding agent powered by multi-model orchestration",
+      "version_cmd": "kimchi --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g kimchi-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g kimchi-cli"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "code", "multi-model"]
+    },
+    {
+      "name": "mimocode",
+      "flag": "--mimocode",
+      "description": "Xiaomi's AI coding agent — fast, local, and open-source",
+      "version_cmd": "mimo --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/XiaomiMiMo/MiMo-Code/releases/latest/download/mimocode-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin mimo && mv /usr/local/bin/mimo /usr/local/bin/mimocode 2>/dev/null; chmod +x /usr/local/bin/mimocode"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/mimocode"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "xiaomi", "code"]
+    },
+    {
+      "name": "engram",
+      "flag": "--engram",
+      "description": "Persistent memory system for coding agents",
+      "version_cmd": "engram --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/engram/engram-cli/releases/latest/download/engram-linux-amd64 -o /usr/local/bin/engram && chmod +x /usr/local/bin/engram"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/engram"
       },
       "size_mb": 20,
-      "tags": ["llm", "cloud", "openai"]
+      "tags": ["ai", "memory", "agents"]
     },
     {
-      "name": "copilot",
-      "flag": "--copilot",
-      "description": "GitHub Copilot CLI",
-      "version_cmd": "gh copilot --version 2>/dev/null || echo 'cli'",
+      "name": "codegraph",
+      "flag": "--codegraph",
+      "description": "Analyzes your codebase structure and dependencies",
+      "version_cmd": "codegraph --version 2>/dev/null || echo 'latest'",
       "install": {
-        "ubuntu": "npm install -g @githubnext/github-copilot-cli",
-        "arch": "yay -S --noconfirm github-copilot-cli 2>/dev/null || npm install -g @githubnext/github-copilot-cli",
-        "default": "npm install -g @githubnext/github-copilot-cli"
+        "default": "curl -fsSL https://github.com/sourcegraph/codegraph/releases/latest/download/codegraph-linux-amd64 -o /usr/local/bin/codegraph && chmod +x /usr/local/bin/codegraph"
       },
       "uninstall": {
-        "default": "npm uninstall -g @githubnext/github-copilot-cli"
+        "default": "sudo rm -f /usr/local/bin/codegraph"
+      },
+      "size_mb": 30,
+      "tags": ["ai", "codebase", "analysis"]
+    },
+    {
+      "name": "pi",
+      "flag": "--pi",
+      "description": "Minimal terminal coding harness — adapt Pi to your workflows",
+      "version_cmd": "pi --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/pi-coding/pi-agent/releases/latest/download/pi-linux-amd64 -o /usr/local/bin/pi && chmod +x /usr/local/bin/pi"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/pi"
       },
       "size_mb": 20,
-      "tags": ["copilot", "ai", "github"]
+      "tags": ["ai", "minimal", "terminal"]
     },
     {
-      "name": "aider",
-      "flag": "--aider",
-      "description": "AI pair programming in the terminal",
-      "version_cmd": "aider --version 2>/dev/null",
+      "name": "antigravity-cli",
+      "flag": "--antigravity-cli",
+      "description": "Lightweight, terminal-first surface for Antigravity agents",
+      "version_cmd": "antigravity --version 2>/dev/null || echo 'latest'",
       "install": {
-        "ubuntu": "pip3 install aider-chat",
-        "arch": "yay -S --noconfirm aider 2>/dev/null || pip3 install aider-chat",
-        "default": "pip3 install aider-chat"
+        "default": "curl -fsSL https://github.com/antigravity/antigravity-cli/releases/latest/download/antigravity-linux-amd64 -o /usr/local/bin/antigravity && chmod +x /usr/local/bin/antigravity"
       },
       "uninstall": {
-        "default": "pip3 uninstall -y aider-chat"
+        "default": "sudo rm -f /usr/local/bin/antigravity"
+      },
+      "size_mb": 20,
+      "tags": ["ai", "agent", "terminal"]
+    },
+    {
+      "name": "gentle-ai",
+      "flag": "--gentle-ai",
+      "description": "Ecosystem, Frameworks, Workflows for AI coding agents",
+      "version_cmd": "gentle --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g gentle-ai"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g gentle-ai"
+      },
+      "size_mb": 30,
+      "tags": ["ai", "framework", "workflows"]
+    },
+    {
+      "name": "minimax-cli",
+      "flag": "--minimax-cli",
+      "description": "Generate text, images, video, speech, and music from the terminal",
+      "version_cmd": "minimax --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g minimax-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g minimax-cli"
       },
       "size_mb": 50,
-      "tags": ["ai", "pair-programming", "cli"]
+      "tags": ["ai", "multimodal", "generation"]
     },
     {
-      "name": "tabby",
-      "flag": "--tabby",
-      "description": "Self-hosted AI coding assistant",
-      "version_cmd": "tabby --version 2>/dev/null || echo 'cli'",
+      "name": "gga",
+      "flag": "--gga",
+      "description": "Provider-agnostic AI code review for every commit",
+      "version_cmd": "gga --version 2>/dev/null || echo 'latest'",
       "install": {
-        "ubuntu": "curl -fsSL https://raw.githubusercontent.com/TabbyML/tabby/main/scripts/install.sh | sh",
-        "arch": "yay -S --noconfirm tabby-bin 2>/dev/null || curl -fsSL https://raw.githubusercontent.com/TabbyML/tabby/main/scripts/install.sh | sh",
-        "default": "curl -fsSL https://raw.githubusercontent.com/TabbyML/tabby/main/scripts/install.sh | sh"
+        "default": "npm install -g gentleman-guardian-angel"
       },
       "uninstall": {
-        "default": "rm -f /usr/local/bin/tabby"
+        "default": "npm uninstall -g gentleman-guardian-angel"
       },
-      "size_mb": 200,
-      "tags": ["ai", "code-completion", "self-hosted"]
+      "size_mb": 20,
+      "tags": ["ai", "code-review", "git"]
+    },
+    {
+      "name": "hermes-agent",
+      "flag": "--hermes-agent",
+      "description": "The self-improving AI agent built by Nous Research",
+      "version_cmd": "hermes --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/NousResearch/hermes-agent/releases/latest/download/hermes-linux-amd64 -o /usr/local/bin/hermes && chmod +x /usr/local/bin/hermes"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/hermes"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "research", "self-improving"]
+    },
+    {
+      "name": "kimi-code",
+      "flag": "--kimi-code",
+      "description": "Kimi Code CLI — The Starting Point for Next-Gen Agents",
+      "version_cmd": "kimi --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g kimi-code-cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g kimi-code-cli"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "code", "cli"]
+    },
+    {
+      "name": "command-code",
+      "flag": "--command-code",
+      "description": "The coding agent that learns your coding taste",
+      "version_cmd": "command-code --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g @command-code/cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @command-code/cli"
+      },
+      "size_mb": 40,
+      "tags": ["ai", "code", "personalized"]
+    },
+    {
+      "name": "freebuff",
+      "flag": "--freebuff",
+      "description": "A 100% free coding agent, right from your terminal",
+      "version_cmd": "freebuff --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "curl -fsSL https://github.com/freebuff/freebuff-cli/releases/latest/download/freebuff-linux-amd64 -o /usr/local/bin/freebuff && chmod +x /usr/local/bin/freebuff"
+      },
+      "uninstall": {
+        "default": "sudo rm -f /usr/local/bin/freebuff"
+      },
+      "size_mb": 30,
+      "tags": ["ai", "free", "code"]
+    },
+    {
+      "name": "ctx7",
+      "flag": "--ctx7",
+      "description": "Live documentation provider for AI coding agents",
+      "version_cmd": "ctx7 --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g context7"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g context7"
+      },
+      "size_mb": 20,
+      "tags": ["ai", "documentation", "context"]
+    },
+    {
+      "name": "openspec",
+      "flag": "--openspec",
+      "description": "Spec-Driven Development framework for AI coding agents",
+      "version_cmd": "openspec --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g openspec"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g openspec"
+      },
+      "size_mb": 20,
+      "tags": ["ai", "spec", "development"]
+    },
+    {
+      "name": "cline",
+      "flag": "--cline",
+      "description": "The open source coding agent in your IDE and terminal",
+      "version_cmd": "cline --version 2>/dev/null || echo 'latest'",
+      "install": {
+        "default": "npm install -g @cline/cli"
+      },
+      "uninstall": {
+        "default": "npm uninstall -g @cline/cli"
+      },
+      "size_mb": 50,
+      "tags": ["ai", "open-source", "ide"]
     }
   ]
 }
