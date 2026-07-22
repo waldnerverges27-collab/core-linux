@@ -135,23 +135,35 @@ module_show() {
 # Auto-installs missing commands (curl, wget, pip3, npm, etc.)
 # ------------------------------------------------------------------
 _elevate_cmd() {
-	if command -v sudo &>/dev/null; then sudo "$@"
-	elif [[ $EUID -eq 0 ]]; then "$@"
-	else "$@" 2>/dev/null; fi
+	if [[ $EUID -eq 0 ]]; then
+		"$@"
+	elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+		sudo "$@"
+	elif command -v sudo &>/dev/null; then
+		sudo "$@" 2>&1 || { log_debug "sudo failed (maybe no passwordless sudo)"; return 1; }
+	else
+		log_debug "No privilege escalation available for: $*"
+		return 1
+	fi
 }
 
 _auto_install_sys_pkg() {
 	local pkg="$1"
-	local pm
-	pm=$(detect_pkg_manager)
-	case "$pm" in
-		apt)    _elevate_cmd apt-get install -y -qq "$pkg" 2>/dev/null ;;
-		dnf)    _elevate_cmd dnf install -y "$pkg" 2>/dev/null ;;
-		pacman) _elevate_cmd pacman -S --noconfirm --needed "$pkg" 2>/dev/null ;;
-		zypper) _elevate_cmd zypper install -y "$pkg" 2>/dev/null ;;
-		xbps-install) _elevate_cmd xbps-install -y "$pkg" 2>/dev/null ;;
-		apk)    _elevate_cmd apk add "$pkg" 2>/dev/null ;;
-		*)      return 1 ;;
+	local pm_cmd
+	# Use global PM and PM_INSTALL_CMD from platform.sh (auto-detected on source)
+	pm_cmd="$PM_INSTALL_CMD"
+	[[ -z "$pm_cmd" ]] && { log_warn "No package manager available; cannot install $pkg"; return 1; }
+
+	log_info "Installing system package: $pkg"
+	case "$PM" in
+		apt)
+			# Ensure package list is fresh-ish (check if apt cache is empty)
+			_elevate_cmd apt-get update -qq 2>/dev/null || true
+			_elevate_cmd env DEBIAN_FRONTEND=noninteractive $pm_cmd "$pkg" 2>/dev/null
+			;;
+		*)
+			_elevate_cmd $pm_cmd "$pkg" 2>/dev/null
+			;;
 	esac
 }
 
@@ -165,25 +177,25 @@ _ensure_cmds() {
 	done
 	[[ ${#missing[@]} -eq 0 ]] && return 0
 
-	log_info "Auto-installing missing system tools: ${missing[*]}"
+	log_info "Auto-installing missing tools: ${missing[*]}"
 	for c in "${missing[@]}"; do
 		case "$c" in
-			curl)  _auto_install_sys_pkg "curl"  && log_success "Installed curl"  || log_warn "Could not install curl" ;;
-			wget)  _auto_install_sys_pkg "wget"  && log_success "Installed wget"  || log_warn "Could not install wget" ;;
-			git)   _auto_install_sys_pkg "git"   && log_success "Installed git"   || log_warn "Could not install git"  ;;
-			jq)    _auto_install_sys_pkg "jq"    && log_success "Installed jq"    || log_warn "Could not install jq"   ;;
+			curl)  _auto_install_sys_pkg "curl"  && log_success "Installed curl"  || log_warn "Could not install curl"  ;;
+			wget)  _auto_install_sys_pkg "wget"  && log_success "Installed wget"  || log_warn "Could not install wget"  ;;
+			git)   _auto_install_sys_pkg "git"   && log_success "Installed git"   || log_warn "Could not install git"   ;;
+			jq)    _auto_install_sys_pkg "jq"    && log_success "Installed jq"    || log_warn "Could not install jq"    ;;
 			pip3|pip)
 				_auto_install_sys_pkg "python3-pip" && log_success "Installed pip" ||
 				_auto_install_sys_pkg "python-pip"  && log_success "Installed pip" ||
 				log_warn "Could not install pip" ;;
 			node|npm)
-				_auto_install_sys_pkg "nodejs" && log_success "Installed nodejs" ||
-				log_warn "Could not install nodejs" ;;
+				_auto_install_sys_pkg "nodejs" || _auto_install_sys_pkg "node" || log_warn "Could not install nodejs" ;;
 			go)
 				_auto_install_sys_pkg "golang" && log_success "Installed golang" ||
+				_auto_install_sys_pkg "go"     && log_success "Installed go"     ||
 				log_warn "Could not install go" ;;
 			make)  _auto_install_sys_pkg "make"  && log_success "Installed make"  || log_warn "Could not install make"  ;;
-			*)     log_warn "Don't know how to auto-install '$c'; install manually" ;;
+			*)     log_warn "Don't know how to auto-install '$c'; please install manually" ;;
 		esac
 	done
 }
@@ -246,9 +258,9 @@ module_install() {
 		_ensure_cmds curl wget git jq
 
 		# Look up the tool's install command from manifest for prerequisite scanning
-		local install_cmd distro
-		distro=$(detect_distro)
-		install_cmd=$(jq -r ".tools[] | select(.name == \"$tool\") | .install[\"$distro\"] // .install[\"default\"] // \"\"" "$manifest" 2>/dev/null || echo "")
+		local install_cmd
+		# Try exact distro ID first (e.g., "ubuntu"), then family (e.g., "debian")
+		install_cmd=$(jq -r ".tools[] | select(.name == \"$tool\") | .install[\"$DISTRO_ID\"] // .install[\"$DISTRO_FAMILY\"] // .install[\"default\"] // \"\"" "$manifest" 2>/dev/null || echo "")
 
 		# Inspect the install command for common dependency patterns
 		if [[ "$install_cmd" == *"pip3"* || "$install_cmd" == *"pip install"* ]]; then
