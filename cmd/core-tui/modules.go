@@ -8,11 +8,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (a *App) updateModules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) updateModules(msg tea.KeyMsg) viewID {
 	mods := batchLoadModules()
 	total := len(mods)
 
-	// Move cursor
+	// Delegate scroll to viewport
+	var cmd tea.Cmd
+	a.vp, cmd = a.vp.Update(msg)
+	if cmd != nil {
+		tea.Batch(cmd)
+	}
+
+	// Arrow keys: move cursor and ensure viewport shows it
 	if keyMatches(msg, "up", "k") {
 		if a.moduleIndex > 0 {
 			a.moduleIndex--
@@ -24,51 +31,26 @@ func (a *App) updateModules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Keep cursor in scroll view
-	maxVis := a.height - 6
-	if maxVis < 3 {
-		maxVis = 3
-	}
-	if a.moduleIndex < a.moduleScroll {
-		a.moduleScroll = a.moduleIndex
-	}
-	if a.moduleIndex >= a.moduleScroll+maxVis {
-		a.moduleScroll = a.moduleIndex - maxVis + 1
-	}
-	if a.moduleScroll < 0 {
-		a.moduleScroll = 0
-	}
-	if a.moduleScroll > total-maxVis {
-		a.moduleScroll = total - maxVis
-	}
-	if a.moduleScroll < 0 {
-		a.moduleScroll = 0
-	}
-
 	switch {
 	case keyMatches(msg, "q"):
-		return a, tea.Quit
+		return a.currentView // handled by global quit
 	case keyMatches(msg, "esc"):
-		a.moduleScroll = 0
-		a.currentView = viewHome
+		a.vp.GotoTop()
+		return viewHome
 	case keyMatches(msg, "enter"):
 		if total > 0 && a.moduleIndex >= 0 && a.moduleIndex < total {
 			a.selectedModule = mods[a.moduleIndex].Name
 			a.toolIndex = 0
-			a.toolScroll = 0
-			a.currentView = viewModuleDetail
+			a.vp.GotoTop()
+			return viewModuleDetail
 		}
 	}
-	return a, nil
+	return viewModules
 }
 
-func (a *App) viewModules() string {
+// renderModulesContent returns the FULL module list (viewport will clip it)
+func (a *App) renderModulesContent() string {
 	var b strings.Builder
-
-	b.WriteString(titleStyle.Render("📦 Module Browser"))
-	b.WriteString(subtitleStyle.Render("Select a module to view and install its tools"))
-	b.WriteString("\n")
-
 	mods := batchLoadModules()
 	inst := batchInstalledState()
 
@@ -76,24 +58,7 @@ func (a *App) viewModules() string {
 		return a.spinner.View() + " Loading modules..."
 	}
 
-	// Calculate visible range (height - title(2) - statusbar(1) - padding(1) - help(1) = height-5)
-	maxVis := a.height - 5
-	if maxVis < 2 {
-		maxVis = 2
-	}
-	start := a.moduleScroll
-	end := start + maxVis
-	if end > len(mods) {
-		end = len(mods)
-	}
-
-	if start > 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... arriba ..."))
-		b.WriteString("\n")
-	}
-
-	for i, mod := range mods[start:end] {
-		absIdx := start + i
+	for i, mod := range mods {
 		status := "✗"
 		statusColor := currentTheme.Muted
 		if _, ok := inst[mod.Name]; ok && len(inst[mod.Name]) > 0 {
@@ -108,7 +73,7 @@ func (a *App) viewModules() string {
 			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(mod.Description),
 		)
 
-		if absIdx == a.moduleIndex {
+		if i == a.moduleIndex {
 			line = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(currentTheme.Primary)).
 				Background(lipgloss.Color(currentTheme.Surface)).
@@ -120,15 +85,7 @@ func (a *App) viewModules() string {
 		b.WriteString("\n")
 	}
 
-	if end < len(mods) {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("   ... abajo ..."))
-		b.WriteString("\n")
-	}
-
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color(currentTheme.Muted)).
-		Render("↑/↓ or j/k navigate • enter select • esc back • q quit"))
-
+	b.WriteString(mutedStyle.Render("↑/↓ scroll • enter select • esc back • q quit"))
 	return b.String()
 }

@@ -12,15 +12,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ---------------------------------------------------------------------------
-// Batch module data — loaded with ONE bash call
-// ---------------------------------------------------------------------------
-
 // ModEntry is a single module's light metadata
 type ModEntry struct {
-	Name        string   `json:"name"`
-	Icon        string   `json:"icon"`
-	Description string   `json:"description"`
+	Name        string `json:"name"`
+	Icon        string `json:"icon"`
+	Description string `json:"description"`
 }
 
 // ToolEntry is a single tool's light metadata
@@ -31,15 +27,13 @@ type ToolEntry struct {
 	Tags        []string `json:"tags"`
 }
 
-// InstalledState holds which module/tool combos are installed
-type InstalledState map[string]map[string]string // module → tool → version
+type InstalledState map[string]map[string]string
 
 var (
 	modCache     []ModEntry
 	modCacheOnce sync.Once
 )
 
-// bashOutput runs a command and returns stdout
 func bashOutput(cmd string) string {
 	c := exec.Command("bash", "-c", cmd)
 	out, err := c.Output()
@@ -61,7 +55,6 @@ func coreHomeDir() string {
 	return os.Getenv("HOME") + "/.local/share/core-linux"
 }
 
-// batchLoadModules loads ALL module metadata in ONE bash invocation
 func batchLoadModules() []ModEntry {
 	modCacheOnce.Do(func() {
 		pattern := coreHomeDir() + "/modules/*/manifest.json"
@@ -78,7 +71,6 @@ func batchLoadModules() []ModEntry {
 	return modCache
 }
 
-// batchLoadTools loads ALL tools for a module in ONE bash invocation
 func batchLoadTools(module string) []ToolEntry {
 	manifest := fmt.Sprintf("%s/modules/%s/manifest.json", coreHomeDir(), module)
 	cmd := fmt.Sprintf(`jq -c '[.tools[] | {name, flag, description, tags}]' '%s' 2>/dev/null || echo '[]'`, manifest)
@@ -93,7 +85,6 @@ func batchLoadTools(module string) []ToolEntry {
 	return tools
 }
 
-// batchInstalledState loads the full installed state in ONE bash invocation
 func batchInstalledState() InstalledState {
 	cmd := fmt.Sprintf(`cat '%s/installed.json' 2>/dev/null || echo '{"modules":{}}'`, stateDir())
 	out := bashOutput(cmd)
@@ -130,32 +121,31 @@ func stateDir() string {
 	return os.Getenv("HOME") + "/.local/state/core-linux"
 }
 
-// updateHome handles key events
-func (a *App) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) updateHome(msg tea.KeyMsg) viewID {
 	switch {
 	case keyMatches(msg, "q"):
-		return a, tea.Quit
+		// handled by global
+		return viewHome
 	case keyMatches(msg, "1"):
-		a.currentView = viewModules
+		return viewModules
 	case keyMatches(msg, "2"):
-		a.currentView = viewEnv
+		return viewEnv
 	case keyMatches(msg, "3"):
-		a.currentView = viewBrain
+		return viewBrain
 	case keyMatches(msg, "4"):
-		a.currentView = viewSettings
+		return viewSettings
 	case keyMatches(msg, "s"):
-		a.currentView = viewSettings
+		return viewSettings
 	case keyMatches(msg, "b"):
-		a.currentView = viewBrain
+		return viewBrain
 	case keyMatches(msg, "e"):
-		a.currentView = viewEnv
+		return viewEnv
 	case keyMatches(msg, "enter"):
-		a.currentView = viewModules
+		return viewModules
 	}
-	return a, nil
+	return viewHome
 }
 
-// viewHome renders the main dashboard
 func (a *App) viewHome() string {
 	var b strings.Builder
 
@@ -163,10 +153,8 @@ func (a *App) viewHome() string {
 	b.WriteString(subtitleStyle.Render("Modular Development Environment"))
 	b.WriteString("\n")
 
-	// Get module data from cache
 	mods := batchLoadModules()
 	inst := batchInstalledState()
-
 	instCount := 0
 	for mod := range inst {
 		if len(inst[mod]) > 0 {
@@ -201,8 +189,7 @@ func (a *App) viewHome() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("? for help • q to quit"))
-
+	b.WriteString(mutedStyle.Render("? for help • q to quit"))
 	return b.String()
 }
 
@@ -217,3 +204,5 @@ func statCard(title, value, color string) string {
 			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(currentTheme.Text)).Render(value),
 		))
 }
+
+var _ = json.Marshal

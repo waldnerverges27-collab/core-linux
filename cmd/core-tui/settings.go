@@ -1,20 +1,18 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// updateSettings handles key events on the settings view
-func (a *App) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) updateSettings(msg tea.KeyMsg) viewID {
 	switch {
 	case keyMatches(msg, "q"):
-		return a, tea.Quit
+		return viewHome
 	case keyMatches(msg, "esc"):
-		a.currentView = viewHome
+		return viewHome
 	case keyMatches(msg, "up", "k"):
 		if a.settingsCursor > 0 {
 			a.settingsCursor--
@@ -29,10 +27,9 @@ func (a *App) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			reloadTheme(theme)
 		}
 	}
-	return a, nil
+	return viewSettings
 }
 
-// viewSettings renders the settings/theme picker
 func (a *App) viewSettings() string {
 	var b strings.Builder
 
@@ -40,37 +37,17 @@ func (a *App) viewSettings() string {
 	b.WriteString(subtitleStyle.Render("Select a theme • Reopen TUI to apply fully"))
 	b.WriteString("\n")
 
-	// Theme section
-	b.WriteString(lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(currentTheme.Secondary)).
-		Render("Theme Picker"))
+	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tc("secondary")).Render("Theme Picker"))
 	b.WriteString("\n\n")
 
 	for i, theme := range a.themeOptions {
-		line := fmt.Sprintf("  %s",
-			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Text)).Render(theme),
-		)
-
+		line := "  " + lipgloss.NewStyle().Foreground(tc("text")).Render(theme)
 		if i == a.settingsCursor {
-			line = "▸ " + lipgloss.NewStyle().
-				Foreground(lipgloss.Color(currentTheme.Primary)).
-				Background(lipgloss.Color(currentTheme.Surface)).
-				Padding(0, 1).
-				Render(theme)
+			line = "▸ " + selectedItemStyle.Render(theme)
 		}
-
 		b.WriteString(line)
 		b.WriteString("\n\n")
 	}
-
-	// Color preview
-	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(currentTheme.Secondary)).
-		Render("Color Preview"))
-	b.WriteString("\n\n")
 
 	preview := lipgloss.JoinHorizontal(lipgloss.Center,
 		colorSwatch(currentTheme.Primary, "Primary"),
@@ -79,13 +56,13 @@ func (a *App) viewSettings() string {
 		colorSwatch(currentTheme.Success, "Success"),
 		colorSwatch(currentTheme.Warning, "Warning"),
 	)
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tc("secondary")).Render("Color Preview"))
+	b.WriteString("\n\n")
 	b.WriteString(preview)
 	b.WriteString("\n\n")
 
-	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color(currentTheme.Muted)).
-		Render("↑/↓ change theme • enter apply • esc back • q quit"))
-
+	b.WriteString(mutedStyle.Render("↑/↓ theme • enter apply • esc back • q quit"))
 	return b.String()
 }
 

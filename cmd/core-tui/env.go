@@ -8,28 +8,24 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// updateEnv handles key events on the env manager view
-func (a *App) updateEnv(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) updateEnv(msg tea.KeyMsg) viewID {
 	switch {
 	case keyMatches(msg, "q"):
-		return a, tea.Quit
+		return viewHome
 	case keyMatches(msg, "esc"):
-		a.currentView = viewHome
+		return viewHome
 	case keyMatches(msg, "1"):
-		// Set variable — launch via core CLI
 		go func() {
 			bashRun(fmt.Sprintf("source %s/lib/core/env_manager.sh && env_set", coreHomeDir()))
 		}()
 	case keyMatches(msg, "2"):
-		// Unset variable
 		go func() {
 			bashRun(fmt.Sprintf("source %s/lib/core/env_manager.sh && env_unset", coreHomeDir()))
 		}()
 	}
-	return a, nil
+	return viewEnv
 }
 
-// viewEnv renders the environment variable manager
 func (a *App) viewEnv() string {
 	var b strings.Builder
 
@@ -37,19 +33,14 @@ func (a *App) viewEnv() string {
 	b.WriteString(subtitleStyle.Render("Manage your shell environment variables"))
 	b.WriteString("\n")
 
-	// Get current vars from rc file
 	rcFile := bashOutput("source " + coreHomeDir() + "/lib/utils/platform.sh && detect_shell_rc")
 	vars := bashOutput(fmt.Sprintf("grep -E '^export [a-zA-Z_]+=' '%s' 2>/dev/null || true", rcFile))
 
 	b.WriteString(fmt.Sprintf(" Shell rc: %s\n\n", rcFile))
 
 	if vars != "" {
-		b.WriteString(lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(currentTheme.Secondary)).
-			Render("Current Variables"))
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(tc("secondary")).Render("Current Variables"))
 		b.WriteString("\n\n")
-
 		for _, v := range strings.Split(vars, "\n") {
 			if v == "" {
 				continue
@@ -58,9 +49,7 @@ func (a *App) viewEnv() string {
 			parts := strings.SplitN(v, "=", 2)
 			if len(parts) == 2 {
 				name := parts[0]
-				val := parts[1]
-				val = strings.Trim(val, "\"")
-				// Mask value for display
+				val := strings.Trim(parts[1], "\"")
 				masked := "****"
 				if len(val) > 10 {
 					masked = val[:3] + "..." + val[len(val)-3:]
@@ -68,8 +57,8 @@ func (a *App) viewEnv() string {
 					masked = "****"
 				}
 				b.WriteString(fmt.Sprintf("  %s = %s\n",
-					lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(currentTheme.Text)).Render(name),
-					lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(masked),
+					lipgloss.NewStyle().Bold(true).Foreground(tc("text")).Render(name),
+					lipgloss.NewStyle().Foreground(tc("muted")).Render(masked),
 				))
 			}
 		}
@@ -78,9 +67,6 @@ func (a *App) viewEnv() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color(currentTheme.Muted)).
-		Render("1 set variable • 2 unset variable • esc back • q quit"))
-
+	b.WriteString(mutedStyle.Render("1 set • 2 unset • esc back • q quit"))
 	return b.String()
 }

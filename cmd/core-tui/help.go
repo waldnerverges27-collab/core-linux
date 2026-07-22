@@ -2,22 +2,16 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
 
-// viewHelp renders the help overlay with all keybindings
-func (a *App) viewHelp() string {
-	var b strings.Builder
+func (a *App) renderHelpContent() string {
+	var b string
 
-	b.WriteString(titleStyle.Render("⌨️ Help & Keybindings"))
-	b.WriteString("\n")
-
-	// Navigation
 	sections := []struct {
 		title string
-		items [][2]string // key, description
+		items [][2]string
 	}{
 		{"Global", [][2]string{
 			{"q", "Quit application"},
@@ -25,9 +19,9 @@ func (a *App) viewHelp() string {
 			{"esc", "Go back to previous view"},
 		}},
 		{"Navigation", [][2]string{
-			{"↑/↓ or j/k", "Move selection up/down"},
+			{"↑/↓ or j/k", "Scroll content"},
+			{"PgUp/PgDn", "Page up / page down"},
 			{"enter", "Confirm selection"},
-			{"tab", "Switch between views"},
 		}},
 		{"Home Screen", [][2]string{
 			{"1", "Open module browser"},
@@ -38,71 +32,38 @@ func (a *App) viewHelp() string {
 		{"Module Detail", [][2]string{
 			{"i", "Install selected module/tool"},
 			{"x", "Uninstall selected module/tool"},
-			{"u", "Update module"},
-		}},
-		{"Quick Access", [][2]string{
-			{"s", "Open settings from anywhere"},
-			{"b", "Open brain from anywhere"},
-			{"e", "Open env manager from anywhere"},
 		}},
 	}
 
 	for _, section := range sections {
-		b.WriteString(lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(currentTheme.Primary)).
-			Render(fmt.Sprintf("  %s", section.title)))
-		b.WriteString("\n")
+		b += lipgloss.NewStyle().Bold(true).Foreground(tc("primary")).Render(fmt.Sprintf("  %s", section.title)) + "\n"
 		for _, item := range section.items {
-			b.WriteString(fmt.Sprintf("    %s  %s\n",
-				lipgloss.NewStyle().
-					Foreground(lipgloss.Color(currentTheme.Secondary)).
-					Width(18).
-					Render(item[0]),
-				lipgloss.NewStyle().
-					Foreground(lipgloss.Color(currentTheme.Text)).
-					Render(item[1]),
-			))
+			b += fmt.Sprintf("    %s  %s\n",
+				lipgloss.NewStyle().Foreground(tc("secondary")).Width(18).Render(item[0]),
+				lipgloss.NewStyle().Foreground(tc("text")).Render(item[1]),
+			)
 		}
-		b.WriteString("\n")
+		b += "\n"
 	}
 
-	// CLI Reference
-	b.WriteString(lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(currentTheme.Primary)).
-		Render("  CLI Reference"))
-	b.WriteString("\n\n")
+	b += lipgloss.NewStyle().Bold(true).Foreground(tc("primary")).Render("  CLI Reference") + "\n\n"
 	cliRef := [][2]string{
 		{"core", "Launch TUI"},
-		{"core install <mod> [--tool]", "Install module/tools"},
-		{"core uninstall <mod> [--tool]", "Remove module/tools"},
-		{"core list [module]", "List modules or tools"},
-		{"core show <name>", "Show module/tool details"},
-		{"core env set|unset|ls", "Manage environment variables"},
-		{"core brain save|search|ls", "Second brain system"},
-		{"core init", "Interactive project setup"},
-		{"core --version", "Show version"},
+		{"core install <mod>", "Install module/tools"},
+		{"core uninstall <mod>", "Remove module/tools"},
+		{"core list", "List modules"},
+		{"core show <name>", "Show details"},
+		{"core env ls", "Show env variables"},
+		{"core brain ls", "Second brain"},
+		{"core init", "Project setup"},
 	}
 	for _, item := range cliRef {
-		b.WriteString(fmt.Sprintf("    %s  %s\n",
-			lipgloss.NewStyle().
-				Foreground(lipgloss.Color(currentTheme.Secondary)).
-				Width(35).
-				Render(item[0]),
-			lipgloss.NewStyle().
-				Foreground(lipgloss.Color(currentTheme.Text)).
-				Render(item[1]),
-		))
+		b += fmt.Sprintf("    %s  %s\n",
+			lipgloss.NewStyle().Foreground(tc("secondary")).Width(35).Render(item[0]),
+			lipgloss.NewStyle().Foreground(tc("text")).Render(item[1]),
+		)
 	}
 
-	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color(currentTheme.Muted)).
-		Render("  Press ? or esc to close help • q to quit"))
-
-	return b.String()
+	b += "\n" + mutedStyle.Render("  ? or esc to close help • q to quit")
+	return b
 }
-
-// Ensure strings is used
-var _ = strings.ToUpper

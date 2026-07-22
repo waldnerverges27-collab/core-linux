@@ -9,11 +9,11 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// View identifiers
 type viewID int
 
 const (
@@ -36,14 +36,15 @@ type App struct {
 	spinner     spinner.Model
 	keys        KeyMap
 
+	// Scroll viewport (used by modules, module_detail, help, brain)
+	vp      viewport.Model
+	vpReady bool // true once width/height are set
+
 	// Module data
-	modules         []string
-	moduleIndex     int
-	moduleScroll    int  // scroll offset for module list
-	selectedModule  string
-	toolIndex       int
-	toolScroll      int  // scroll offset for tools list
-	helpScroll      int  // scroll offset for help view
+	modules        []string
+	moduleIndex    int
+	selectedModule string
+	toolIndex      int
 
 	// Install progress
 	installing      bool
@@ -56,7 +57,7 @@ type App struct {
 
 	// Brain
 	brainSearch textinput.Model
-	brainMode   string // "list", "search", "save"
+	brainMode   string
 
 	// Env
 	envTable table.Model
@@ -69,38 +70,6 @@ type App struct {
 	loading bool
 }
 
-// visibleRange calculates which slice of items to render based on
-// terminal height, scroll offset, and total item count.
-func visibleRange(cursor, total, termHeight, scrollOffset int) (int, int, int) {
-	const headerLines = 5
-	maxVisible := termHeight - headerLines
-	if maxVisible < 3 {
-		maxVisible = 3
-	}
-
-	if cursor < scrollOffset {
-		scrollOffset = cursor
-	}
-	if cursor >= scrollOffset+maxVisible {
-		scrollOffset = cursor - maxVisible + 1
-	}
-	if scrollOffset < 0 {
-		scrollOffset = 0
-	}
-	if scrollOffset > total-maxVisible {
-		scrollOffset = total - maxVisible
-	}
-	if scrollOffset < 0 {
-		scrollOffset = 0
-	}
-	end := scrollOffset + maxVisible
-	if end > total {
-		end = total
-	}
-	return scrollOffset, end, scrollOffset
-}
-
-// NewApp creates and returns a new App model
 func NewApp() *App {
 	s := spinner.New()
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Primary))
@@ -111,25 +80,70 @@ func NewApp() *App {
 	ti.CharLimit = 100
 
 	return &App{
-		currentView:   viewHome,
-		help:          help.New(),
-		spinner:       s,
-		keys:          defaultKeys,
-		moduleIndex:   0,
-		toolIndex:     0,
-		installLog:    []string{},
-		themeOptions:  []string{"catppuccin-mocha", "nord", "dracula", "gruvbox-dark", "tokyo-night", "rose-pine"},
-		brainSearch:   ti,
-		envTable:      table.New(),
+		currentView:  viewHome,
+		help:         help.New(),
+		spinner:      s,
+		keys:         defaultKeys,
+		moduleIndex:  0,
+		toolIndex:    0,
+		installLog:   []string{},
+		themeOptions: []string{"catppuccin-mocha", "nord", "dracula", "gruvbox-dark", "tokyo-night", "rose-pine"},
+		brainSearch:  ti,
+		envTable:     table.New(),
 	}
 }
 
-// Init initializes the model
 func (a *App) Init() tea.Cmd {
 	return a.spinner.Tick
 }
 
-// Update handles all messages and key events
+// vpContentHeight returns the height available for viewport content
+// (terminal height minus header/footer/padding overhead)
+func (a *App) vpContentHeight() int {
+	// overhead: title(1) + subtitle(1) + statusbar(1) + padding(1) + help(1) + margin(1) = 6
+	h := a.height - 6
+	if h < 3 {
+		h = 3
+	}
+	if h > a.height-1 {
+		h = a.height - 1
+	}
+	return h
+}
+
+// rebuildViewport sets the viewport dimensions and content for the current view
+func (a *App) rebuildViewport(content string) {
+	vpWidth := a.width - 4 // account for padding
+	if vpWidth < 10 {
+		vpWidth = 10
+	}
+	vpHeight := a.vpContentHeight()
+
+	if !a.vpReady {
+		a.vp = viewport.New(vpWidth, vpHeight)
+		a.vp.Style = lipgloss.NewStyle()
+		a.vp.MouseWheelEnabled = true
+		a.vpReady = true
+	} else {
+		a.vp.Width = vpWidth
+		a.vp.Height = vpHeight
+	}
+
+	a.vp.SetContent(content)
+}
+
+// viewHeader renders the title area above the viewport
+func (a *App) viewHeader(title, subtitle string) string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(title))
+	b.WriteString("\n")
+	if subtitle != "" {
+		b.WriteString(subtitleStyle.Render(subtitle))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -140,35 +154,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.help.Width = msg.Width
 
 	case tea.KeyMsg:
-		// Global keys
 		switch {
 		case key.Matches(msg, a.keys.ForceQuit):
 			return a, tea.Quit
 		case key.Matches(msg, a.keys.Help):
 			if a.currentView != viewHelp {
-				a.currentView = viewHelp
+				a.enterView(viewHelp)
 				return a, nil
 			}
 		}
 
-		// View-specific keys
-		switch a.currentView {
-		case viewHome:
-			return a.updateHome(msg)
-		case viewModules:
-			return a.updateModules(msg)
-		case viewModuleDetail:
-			return a.updateModuleDetail(msg)
-		case viewSettings:
-			return a.updateSettings(msg)
-		case viewBrain:
-			return a.updateBrain(msg)
-		case viewEnv:
-			return a.updateEnv(msg)
-		case viewHelp:
-			if key.Matches(msg, a.keys.Quit, a.keys.Back, a.keys.Help) {
-				a.currentView = viewHome
-			}
+		// View-specific key handling
+		var handled bool
+		a.currentView, handled = a.handleViewKey(msg)
+		if handled {
+			return a, nil
 		}
 
 	case spinner.TickMsg:
@@ -180,37 +180,85 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
+// handleViewKey routes key events to the appropriate view handler
+// Returns (newView, wasHandled)
+func (a *App) handleViewKey(msg tea.KeyMsg) (viewID, bool) {
+	switch a.currentView {
+	case viewHome:
+		return a.updateHome(msg), true
+	case viewModules:
+		return a.updateModules(msg), true
+	case viewModuleDetail:
+		return a.updateModuleDetail(msg), true
+	case viewSettings:
+		return a.updateSettings(msg), true
+	case viewBrain:
+		return a.updateBrain(msg), true
+	case viewEnv:
+		return a.updateEnv(msg), true
+	case viewHelp:
+		if key.Matches(msg, a.keys.Quit, a.keys.Back, a.keys.Help) {
+			return viewHome, true
+		}
+		return viewHelp, true
+	case viewInstall:
+		// Install view: only allow q to quit
+		return viewInstall, true
+	}
+	return a.currentView, false
+}
+
+// enterView transitions to a new view, rebuilding the viewport if needed
+func (a *App) enterView(v viewID) {
+	a.currentView = v
+	a.vp.GotoTop()
+}
+
 // View renders the current view
 func (a *App) View() string {
-	var content string
+	var header, body string
 
 	switch a.currentView {
 	case viewHome:
-		content = a.viewHome()
+		body = a.viewHome()
 	case viewModules:
-		content = a.viewModules()
+		header = a.viewHeader("📦 Module Browser", "Select a module to view its tools")
+		body = a.renderModulesContent()
 	case viewModuleDetail:
-		content = a.viewModuleDetail()
+		tools := batchLoadTools(a.selectedModule)
+		body = a.renderToolDetailContent(tools)
 	case viewInstall:
-		content = a.viewInstall()
+		body = a.viewInstall()
 	case viewSettings:
-		content = a.viewSettings()
+		body = a.viewSettings()
 	case viewBrain:
-		content = a.viewBrain()
+		header = a.viewHeader("🧠 Second Brain", "Your personal knowledge base")
+		body = a.renderBrainContent()
 	case viewEnv:
-		content = a.viewEnv()
+		body = a.viewEnv()
 	case viewHelp:
-		content = a.viewHelp()
+		header = a.viewHeader("⌨️ Help & Keybindings", "")
+		body = a.renderHelpContent()
 	}
 
-	// Wrap with status bar
-	statusBar := a.viewStatusBar()
-	mainContent := lipgloss.JoinVertical(lipgloss.Left, content, statusBar)
-
-	return lipgloss.NewStyle().PaddingLeft(2).PaddingRight(2).PaddingTop(1).Render(mainContent)
+	// For scrollable views, use viewport
+	switch a.currentView {
+	case viewModules, viewModuleDetail, viewBrain, viewHelp:
+		fullContent := header + body
+		a.rebuildViewport(fullContent)
+		content := a.vp.View()
+		statusBar := a.viewStatusBar()
+		return lipgloss.NewStyle().PaddingLeft(2).PaddingRight(2).PaddingTop(1).Render(
+			lipgloss.JoinVertical(lipgloss.Left, content, statusBar),
+		)
+	default:
+		statusBar := a.viewStatusBar()
+		return lipgloss.NewStyle().PaddingLeft(2).PaddingRight(2).PaddingTop(1).Render(
+			lipgloss.JoinVertical(lipgloss.Left, body, statusBar),
+		)
+	}
 }
 
-// viewStatusBar renders the bottom status bar
 func (a *App) viewStatusBar() string {
 	viewNames := map[viewID]string{
 		viewHome:         "Home",
@@ -222,12 +270,11 @@ func (a *App) viewStatusBar() string {
 		viewEnv:          "Env",
 		viewHelp:         "Help",
 	}
-
 	viewName := viewNames[a.currentView]
-	moduleCount := len(a.modules)
+	modCount := len(batchLoadModules())
 	version := "1.0.0"
 
-	left := lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Background(lipgloss.Color(currentTheme.Surface)).Padding(0, 1).Render(fmt.Sprintf(" %s | %d modules", viewName, moduleCount))
+	left := lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Background(lipgloss.Color(currentTheme.Surface)).Padding(0, 1).Render(fmt.Sprintf(" %s | %d modules", viewName, modCount))
 	right := lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Primary)).Background(lipgloss.Color(currentTheme.Surface)).Render(fmt.Sprintf(" v%s ", version))
 	center := lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Secondary)).Background(lipgloss.Color(currentTheme.Surface)).Render(" [?] Help  [q] Quit ")
 	padding := a.width - lipgloss.Width(left) - lipgloss.Width(center) - lipgloss.Width(right)
@@ -235,7 +282,5 @@ func (a *App) viewStatusBar() string {
 		padding = 1
 	}
 	spaces := strings.Repeat(" ", padding)
-
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, center, spaces, right)
 }
-
