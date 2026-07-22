@@ -85,6 +85,40 @@ func batchLoadTools(module string) []ToolEntry {
 	return tools
 }
 
+// batchDetectTools checks ALL tools in a module using bash _tool_detect
+// Returns JSON: {"tool_name": "version_or_empty"}
+// Uses a SINGLE bash call instead of spawning 27 processes.
+func batchDetectTools(module string) map[string]string {
+	manifest := fmt.Sprintf("%s/modules/%s/manifest.json", coreHomeDir(), module)
+	ch := coreHomeDir()
+	// Construye un script bash que itera sobre los tools del manifest
+	// y llama _tool_detect para cada uno, devolviendo JSON.
+	cmd := fmt.Sprintf(`
+		source '%s/lib/core/module_manager.sh' 2>/dev/null
+		manifest='%s'
+		result="{"
+		sep=""
+		while IFS= read -r tool; do
+			[ -z "$tool" ] && continue
+			ver=""
+			ver=$(_tool_detect "$tool" 2>/dev/null) || true
+			result="$result$sep\"$tool\":\"${ver:-}\""
+			sep=","
+		done < <(jq -r '.tools[].name' "$manifest" 2>/dev/null)
+		echo "$result}"
+	`, ch, manifest)
+	out := bashOutput(cmd)
+	if out == "" {
+		out = "{}"
+	}
+	result := make(map[string]string)
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		// Fallback: try parsing empty or malformed
+		return result
+	}
+	return result
+}
+
 func batchInstalledState() InstalledState {
 	cmd := fmt.Sprintf(`cat '%s/installed.json' 2>/dev/null || echo '{"modules":{}}'`, stateDir())
 	out := bashOutput(cmd)
