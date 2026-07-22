@@ -28,9 +28,56 @@ tool_exists_in_manifest() {
 	jq -e ".tools[] | select(.name == \"$tool\")" "$manifest" &>/dev/null
 }
 
+# ------------------------------------------------------------------
+# Batch-read ALL module manifests in one jq call
+# Returns JSON array: [{name, icon, description, deps, tools: [{name, flag, description}]}]
+# ------------------------------------------------------------------
+_batch_modules_json() {
+	local pattern="$CORE_HOME/modules/*/manifest.json"
+	# shellcheck disable=SC2086
+	jq -s '[.[] | {name, icon, description, dependencies, tools: [.tools[] | {name, flag, description, tags}]}]' $pattern 2>/dev/null || echo "[]"
+}
+
+# ------------------------------------------------------------------
+# Batch-read installed state (one jq call, cached)
+# ------------------------------------------------------------------
+_installed_map() {
+	local cache_file="${CORE_TMP:-/tmp}/core-installed-cache-$$.json"
+	if [[ ! -f "$cache_file" ]]; then
+		state_init
+		jq -r '.modules | to_entries[] | .key as $m | .value.tools | to_entries[] | "\($m)/\(.key)"' "$CORE_STATE_FILE" 2>/dev/null > "$cache_file" || true
+	fi
+	cat "$cache_file"
+}
+
+_clear_installed_cache() {
+	rm -f "${CORE_TMP:-/tmp}/core-installed-cache-$$.json"
+}
+
+# ------------------------------------------------------------------
+# Spinner for slow operations
+# ------------------------------------------------------------------
+_spinner() {
+	local msg="$1"
+	local pid=$!
+	local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+	local i=0
+	while kill -0 "$pid" 2>/dev/null; do
+		printf "\r%s %s " "${spin:$i:1}" "$msg"
+		i=$(( (i+1) % ${#spin} ))
+		sleep 0.1
+	done
+	printf "\r✔ %s\n" "$msg"
+}
+
+# ------------------------------------------------------------------
+# module_list — muestra módulos usando batch jq (UNA llamada)
+# ------------------------------------------------------------------
 module_list() {
 	local module="${1:-}"
+
 	if [[ -n "$module" ]]; then
+		# --- Mostrar UN módulo específico con todos sus tools ---
 		local manifest
 		manifest=$(module_manifest "$module")
 		if [[ ! -f "$manifest" ]]; then
@@ -38,59 +85,63 @@ module_list() {
 			return 1
 		fi
 
-		local name version description deps icon
-		name=$(jq -r '.name // empty' "$manifest")
-		version=$(jq -r '.version // "1.0.0"' "$manifest")
-		description=$(jq -r '.description // empty' "$manifest")
-		icon=$(jq -r '.icon // ""' "$manifest")
-		deps=$(jq -r '.dependencies | join(", ")' "$manifest" 2>/dev/null || echo "none")
+		# Una sola llamada jq para extraer TODO el contenido del módulo
+		read -r name version description deps icon tool_count <<< \
+			$(jq -r '[.name, .version, .description, (.dependencies | join(",")), .icon, (.tools | length)] | @tsv' "$manifest" 2>/dev/null)
+		version="${version:-1.0.0}"
+		deps="${deps:-none}"
 
 		echo "$icon $name v$version"
 		echo "  $description"
-		echo "  Dependencies: $deps"
+		echo "  Dependencies: ${deps:-none}"
 		echo ""
 		echo "Tools:"
 
-		local tool_count
-		tool_count=$(jq -r '.tools | length' "$manifest" 2>/dev/null || echo 0)
-		if [[ "$tool_count" -eq 0 ]]; then
+		if [[ "${tool_count:-0}" -eq 0 ]]; then
 			echo "  (none)"
 		else
-			local i=0
-			while jq -e ".tools[$i]" "$manifest" &>/dev/null; do
-				local tool_name tool_desc tool_flag tool_ver
-				tool_name=$(jq -r ".tools[$i].name // empty" "$manifest")
-				tool_desc=$(jq -r ".tools[$i].description // empty" "$manifest")
-				tool_flag=$(jq -r ".tools[$i].flag // empty" "$manifest")
+			# Batch: extraer todos los tools + sus estados de instalación en UNA llamada
+			local state_file="$CORE_STATE_FILE"
+			jq -r --arg mod "$module" '
+				.tools[] | [
+					.name,
+					.flag,
+					.description,
+					(.tags // []) | join(",")
+				] | @tsv
+			' "$manifest" 2>/dev/null | while IFS=$'\t' read -r tname tflag tdesc ttags; do
 				local status="✗"
 				local ver_info=""
-				if tool_is_installed "$module" "$tool_name"; then
+				if tool_is_installed "$module" "$tname"; then
 					status="✔"
-					tool_ver=$(get_tool_version "$module" "$tool_name")
-					ver_info=" ($tool_ver)"
+					local ver
+					ver=$(get_tool_version "$module" "$tname")
+					ver_info=" ($ver)"
 				fi
-				echo "  $status $tool_flag $tool_name — $tool_desc$ver_info"
-				i=$((i+1))
+				echo "  $status $tflag $tname — $tdesc$ver_info"
 			done
 		fi
-	else
-		local mod
-		for mod in "$CORE_HOME/modules"/*/; do
-			[[ -d "$mod" ]] || continue
-			mod=$(basename "$mod")
-			local manifest="$CORE_HOME/modules/$mod/manifest.json"
-			if [[ -f "$manifest" ]]; then
-				local desc icon
-				desc=$(jq -r '.description // ""' "$manifest")
-				icon=$(jq -r '.icon // " "' "$manifest")
-				local status="✗"
-				module_is_installed "$mod" && status="✔"
-				echo "$status $icon $mod — $desc"
+
+	elif [[ -d "$CORE_HOME/modules" ]]; then
+		# --- Listar TODOS los módulos con UNA sola llamada jq ---
+		local modules_json
+		modules_json=$(_batch_modules_json)
+		local installed_map
+		installed_map=$(_installed_map)
+
+		echo "$modules_json" | jq -r '.[] | [.name, .icon, .description] | @tsv' 2>/dev/null | while IFS=$'\t' read -r name icon desc; do
+			local status="✗"
+			if echo "$installed_map" | grep -q "^$name/"; then
+				status="✔"
 			fi
+			echo "$status $icon $name — $desc"
 		done
 	fi
 }
 
+# ------------------------------------------------------------------
+# module_show — details of a module or tool
+# ------------------------------------------------------------------
 module_show() {
 	local target="${1:?Usage: module_show <module|tool>}"
 	if module_exists "$target"; then
@@ -98,41 +149,43 @@ module_show() {
 		return
 	fi
 
-	local mod manifest
-	for mod in "$CORE_HOME/modules"/*/; do
-		mod=$(basename "$mod")
-		manifest="$CORE_HOME/modules/$mod/manifest.json"
-		[[ -f "$manifest" ]] || continue
+	# Buscar el tool en todos los manifests (una sola vez)
+	local result
+	result=$(jq -s --arg tool "$target" '
+		[.[].tools[] | select(.name == $tool)][0] // empty
+	' "$CORE_HOME"/modules/*/manifest.json 2>/dev/null || echo "")
 
-		local tool_data
-		tool_data=$(jq -r ".tools[] | select(.name == \"$target\") // empty" "$manifest" 2>/dev/null || true)
-		if [[ -n "$tool_data" ]]; then
-			echo "Name: $(jq -r '.name' <<<"$tool_data")"
-			echo "Module: $mod"
-			echo "Description: $(jq -r '.description // "N/A"' <<<"$tool_data")"
-			echo "Flag: $(jq -r '.flag // "N/A"' <<<"$tool_data")"
-			echo "Size: $(jq -r '.size_mb // "?"' <<<"$tool_data") MB"
-			local tags
-			tags=$(jq -r '.tags | join(", ")' <<<"$tool_data" 2>/dev/null || echo "N/A")
-			echo "Tags: $tags"
+	if [[ -z "$result" || "$result" == "null" ]]; then
+		log_error "Module or tool not found: $target"
+		return 1
+	fi
 
-			if tool_is_installed "$mod" "$target"; then
-				local ver
-				ver=$(get_tool_version "$mod" "$target")
-				echo "Status: ✔ Installed ($ver)"
-			else
-				echo "Status: ✗ Not installed"
-			fi
-			return
-		fi
-	done
-	log_error "Module or tool not found: $target"
-	return 1
+	local name mod_desc mod_flag mod_size mod_tags found_mod
+	name=$(jq -r '.name' <<<"$result")
+	mod_desc=$(jq -r '.description // "N/A"' <<<"$result")
+	mod_flag=$(jq -r '.flag // "N/A"' <<<"$result")
+	mod_size=$(jq -r '.size_mb // "?"' <<<"$result")
+	mod_tags=$(jq -r '.tags | join(", ")' <<<"$result" 2>/dev/null || echo "N/A")
+	found_mod=$(jq -s --arg tool "$target" '[paths as $p | select(getpath($p)? == $tool) | $p[0]] | first // ""' "$CORE_HOME"/modules/*/manifest.json 2>/dev/null || echo "")
+
+	echo "Name: $name"
+	echo "Module: ${found_mod:-?}"
+	echo "Description: $mod_desc"
+	echo "Flag: $mod_flag"
+	echo "Size: $mod_size MB"
+	echo "Tags: $mod_tags"
+
+	if tool_is_installed "${found_mod:-?}" "$name" 2>/dev/null; then
+		local ver
+		ver=$(get_tool_version "${found_mod:-?}" "$name")
+		echo "Status: ✔ Installed ($ver)"
+	else
+		echo "Status: ✗ Not installed"
+	fi
 }
 
 # ------------------------------------------------------------------
 # System-level dependency resolution for tool installs
-# Auto-installs missing commands (curl, wget, pip3, npm, etc.)
 # ------------------------------------------------------------------
 _elevate_cmd() {
 	if [[ $EUID -eq 0 ]]; then
@@ -149,15 +202,12 @@ _elevate_cmd() {
 
 _auto_install_sys_pkg() {
 	local pkg="$1"
-	local pm_cmd
-	# Use global PM and PM_INSTALL_CMD from platform.sh (auto-detected on source)
-	pm_cmd="$PM_INSTALL_CMD"
+	local pm_cmd="$PM_INSTALL_CMD"
 	[[ -z "$pm_cmd" ]] && { log_warn "No package manager available; cannot install $pkg"; return 1; }
 
 	log_info "Installing system package: $pkg"
 	case "$PM" in
 		apt)
-			# Ensure package list is fresh-ish (check if apt cache is empty)
 			_elevate_cmd apt-get update -qq 2>/dev/null || true
 			_elevate_cmd env DEBIAN_FRONTEND=noninteractive $pm_cmd "$pkg" 2>/dev/null
 			;;
@@ -167,7 +217,6 @@ _auto_install_sys_pkg() {
 	esac
 }
 
-# Ensure a list of system commands is available; install if missing.
 _ensure_cmds() {
 	local cmds=("$@")
 	local missing=()
@@ -177,43 +226,45 @@ _ensure_cmds() {
 	done
 	[[ ${#missing[@]} -eq 0 ]] && return 0
 
-	log_info "Auto-installing missing tools: ${missing[*]}"
+	log_info "Auto-installando: ${missing[*]}"
 	for c in "${missing[@]}"; do
 		case "$c" in
-			curl)  _auto_install_sys_pkg "curl"  && log_success "Installed curl"  || log_warn "Could not install curl"  ;;
-			wget)  _auto_install_sys_pkg "wget"  && log_success "Installed wget"  || log_warn "Could not install wget"  ;;
-			git)   _auto_install_sys_pkg "git"   && log_success "Installed git"   || log_warn "Could not install git"   ;;
-			jq)    _auto_install_sys_pkg "jq"    && log_success "Installed jq"    || log_warn "Could not install jq"    ;;
+			curl)  _auto_install_sys_pkg "curl"  && log_success "Instalado curl"  || log_warn "No se pudo instalar curl"  ;;
+			wget)  _auto_install_sys_pkg "wget"  && log_success "Instalado wget"  || log_warn "No se pudo instalar wget"  ;;
+			git)   _auto_install_sys_pkg "git"   && log_success "Instalado git"   || log_warn "No se pudo instalar git"   ;;
+			jq)    _auto_install_sys_pkg "jq"    && log_success "Instalado jq"    || log_warn "No se pudo instalar jq"    ;;
 			pip3|pip)
-				_auto_install_sys_pkg "python3-pip" && log_success "Installed pip" ||
-				_auto_install_sys_pkg "python-pip"  && log_success "Installed pip" ||
-				log_warn "Could not install pip" ;;
+				_auto_install_sys_pkg "python3-pip" && log_success "Instalado pip" ||
+				_auto_install_sys_pkg "python-pip"  && log_success "Instalado pip" ||
+				log_warn "No se pudo instalar pip" ;;
 			node|npm)
-				_auto_install_sys_pkg "nodejs" || _auto_install_sys_pkg "node" || log_warn "Could not install nodejs" ;;
+				_auto_install_sys_pkg "nodejs" || _auto_install_sys_pkg "node" || log_warn "No se pudo instalar nodejs" ;;
 			go)
-				_auto_install_sys_pkg "golang" && log_success "Installed golang" ||
-				_auto_install_sys_pkg "go"     && log_success "Installed go"     ||
-				log_warn "Could not install go" ;;
-			make)  _auto_install_sys_pkg "make"  && log_success "Installed make"  || log_warn "Could not install make"  ;;
-			*)     log_warn "Don't know how to auto-install '$c'; please install manually" ;;
+				_auto_install_sys_pkg "golang" && log_success "Instalado golang" ||
+				_auto_install_sys_pkg "go"     && log_success "Instalado go"     ||
+				log_warn "No se pudo instalar go" ;;
+			make)  _auto_install_sys_pkg "make"  && log_success "Instalado make"  || log_warn "No se pudo instalar make"  ;;
+			*)     log_warn "No sé instalar '$c'; hazlo manualmente" ;;
 		esac
 	done
 }
 
+# ------------------------------------------------------------------
+# module_install
+# ------------------------------------------------------------------
 module_install() {
 	local module="${1:?Usage: module_install <module> [--tool1...]}"
 	shift
 
 	module_exists "$module" || { log_error "Module $module not found"; return 1; }
-
 	check_conflicts "$module" || return 1
 
 	local manifest
 	manifest=$(module_manifest "$module")
 
+	# Resolver dependencias
 	local -a order
 	mapfile -t order < <(resolve_install_order "$module" 2>/dev/null || true)
-
 	local dep
 	for dep in "${order[@]}"; do
 		[[ "$dep" == "$module" ]] && continue
@@ -223,6 +274,7 @@ module_install() {
 		fi
 	done
 
+	# Determinar tools a instalar
 	local specific_tools=("$@")
 	local -a tools=()
 
@@ -240,29 +292,34 @@ module_install() {
 
 	[[ ${#tools[@]} -eq 0 ]] && { log_warn "No tools defined for $module"; return 0; }
 
+	# Batch: extraer todos los install_cmd + version_cmd + tool names de una sola vez
+	local tools_json
+	tools_json=$(jq -c '[.tools[] | {name, flag, install, version_cmd}]' "$manifest" 2>/dev/null)
+
 	local tool
 	for tool in "${tools[@]}"; do
 		log_step "Installing $module/$tool..."
 
-		# Tool already on PATH?
+		# Ya instalado?
 		if command -v "$tool" &>/dev/null; then
 			local existing_ver
 			existing_ver=$("$tool" --version 2>/dev/null || "$tool" version 2>/dev/null || echo "unknown")
-			log_info "$tool already available ($existing_ver)"
+			log_info "$tool ya disponible ($existing_ver)"
 			mark_module_tool_installed "$module" "$tool" "$existing_ver"
-			log_success "$tool ready"
+			log_success "$tool listo"
 			continue
 		fi
 
-		# Auto-install system-level prerequisites that the install script needs
+		# Auto-instalar prerequisitos del sistema
 		_ensure_cmds curl wget git jq
 
-		# Look up the tool's install command from manifest for prerequisite scanning
-		local install_cmd
-		# Try exact distro ID first (e.g., "ubuntu"), then family (e.g., "debian")
-		install_cmd=$(jq -r ".tools[] | select(.name == \"$tool\") | .install[\"$DISTRO_ID\"] // .install[\"$DISTRO_FAMILY\"] // .install[\"default\"] // \"\"" "$manifest" 2>/dev/null || echo "")
+		# Extraer info del tool desde el JSON ya cargado
+		local tool_info install_cmd ver_cmd
+		tool_info=$(echo "$tools_json" | jq -c ".[] | select(.name == \"$tool\")" 2>/dev/null || echo "{}")
+		install_cmd=$(echo "$tool_info" | jq -r ".install[\"$DISTRO_ID\"] // .install[\"$DISTRO_FAMILY\"] // .install[\"default\"] // \"\"" 2>/dev/null || echo "")
+		ver_cmd=$(echo "$tool_info" | jq -r '.version_cmd // ""' 2>/dev/null || echo "")
 
-		# Inspect the install command for common dependency patterns
+		# Detectar dependencias por el comando de instalación
 		if [[ "$install_cmd" == *"pip3"* || "$install_cmd" == *"pip install"* ]]; then
 			_ensure_cmds pip3
 		fi
@@ -276,30 +333,20 @@ module_install() {
 			_ensure_cmds make
 		fi
 
-		# Run the module's install script
+		# Ejecutar script de instalación o comando inline
+		local ok=0
 		local install_script="$CORE_HOME/modules/$module/install.sh"
 		if [[ -f "$install_script" ]]; then
 			if bash "$install_script" "$tool"; then
-				local version=""
-				local ver_cmd
-				ver_cmd=$(jq -r ".tools[] | select(.name == \"$tool\") | .version_cmd // \"\"" "$manifest")
-				[[ -n "$ver_cmd" && "$ver_cmd" != "null" ]] && version=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
-				mark_module_tool_installed "$module" "$tool" "$version"
-				log_success "Installed $tool ($version)"
+				ok=1
 			else
 				log_error "Failed to install $tool"
 				return 1
 			fi
 		elif [[ -n "$install_cmd" && "$install_cmd" != "null" ]]; then
-			# Try the manifest's inline install command
-			log_info "Running manifest install command..."
+			log_info "Running: $install_cmd"
 			if eval "$install_cmd"; then
-				local version=""
-				local ver_cmd
-				ver_cmd=$(jq -r ".tools[] | select(.name == \"$tool\") | .version_cmd // \"\"" "$manifest")
-				[[ -n "$ver_cmd" && "$ver_cmd" != "null" ]] && version=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
-				mark_module_tool_installed "$module" "$tool" "$version"
-				log_success "Installed $tool ($version)"
+				ok=1
 			else
 				log_error "Failed to install $tool"
 				return 1
@@ -307,11 +354,21 @@ module_install() {
 		else
 			log_warn "No install method for $module/$tool"
 		fi
+
+		if [[ $ok -eq 1 ]]; then
+			local version=""
+			[[ -n "$ver_cmd" ]] && version=$(eval "$ver_cmd" 2>/dev/null || echo "unknown")
+			mark_module_tool_installed "$module" "$tool" "$version"
+			log_success "Installed $tool ($version)"
+		fi
 	done
 
 	module_verify "$module"
 }
 
+# ------------------------------------------------------------------
+# module_uninstall
+# ------------------------------------------------------------------
 module_uninstall() {
 	local module="${1:?Usage: module_uninstall <module> [--tool1...]}"
 	shift
@@ -338,28 +395,28 @@ module_uninstall() {
 	local tool
 	for tool in "${tools[@]}"; do
 		if ! tool_is_installed "$module" "$tool"; then
-			log_info "$tool not installed, skipping"
+			log_info "$tool no instalado, saltando"
 			continue
 		fi
 
-		if ! confirm "Remove $tool?"; then
-			log_info "Skipping $tool"
+		if ! confirm "¿Eliminar $tool?"; then
+			log_info "Saltando $tool"
 			continue
 		fi
 
-		log_step "Uninstalling $tool..."
+		log_step "Desinstalando $tool..."
 		local uninstall_script="$CORE_HOME/modules/$module/uninstall.sh"
 		if [[ -f "$uninstall_script" ]]; then
-			bash "$uninstall_script" "$tool" 2>/dev/null || log_warn "Uninstall had warnings"
+			bash "$uninstall_script" "$tool" 2>/dev/null || log_warn "Desinstalación tuvo advertencias"
 		fi
 		mark_module_tool_removed "$module" "$tool"
-		log_success "Uninstalled $tool"
+		log_success "Desinstalado $tool"
 	done
 }
 
 module_update() {
 	local module="${1:?Usage: module_update <module>}"
-	log_step "Updating $module..."
+	log_step "Actualizando $module..."
 	module_install "$module"
 }
 
@@ -376,9 +433,9 @@ module_verify() {
 	local module="${1:?Usage: module_verify <module>}"
 	local verify_script="$CORE_HOME/modules/$module/verify.sh"
 	if [[ -f "$verify_script" ]]; then
-		log_step "Verifying $module..."
-		bash "$verify_script" 2>/dev/null || log_warn "Verification reported issues"
+		log_step "Verificando $module..."
+		bash "$verify_script" 2>/dev/null || log_warn "Verificación reportó problemas"
 	else
-		log_info "No verify script for $module"
+		log_info "No hay script de verificación para $module"
 	fi
 }

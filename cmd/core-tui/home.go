@@ -1,16 +1,45 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Helper to run bash and get output
+// ---------------------------------------------------------------------------
+// Batch module data — loaded with ONE bash call
+// ---------------------------------------------------------------------------
+
+// ModEntry is a single module's light metadata
+type ModEntry struct {
+	Name        string   `json:"name"`
+	Icon        string   `json:"icon"`
+	Description string   `json:"description"`
+}
+
+// ToolEntry is a single tool's light metadata
+type ToolEntry struct {
+	Name        string   `json:"name"`
+	Flag        string   `json:"flag"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+}
+
+// InstalledState holds which module/tool combos are installed
+type InstalledState map[string]map[string]string // module → tool → version
+
+var (
+	modCache     []ModEntry
+	modCacheOnce sync.Once
+)
+
+// bashOutput runs a command and returns stdout
 func bashOutput(cmd string) string {
 	c := exec.Command("bash", "-c", cmd)
 	out, err := c.Output()
@@ -25,13 +54,6 @@ func bashRun(cmd string) error {
 	return c.Run()
 }
 
-func corePath() string {
-	if h := os.Getenv("CORE_HOME"); h != "" {
-		return h + "/core"
-	}
-	return os.Getenv("HOME") + "/.local/share/core-linux/core"
-}
-
 func coreHomeDir() string {
 	if h := os.Getenv("CORE_HOME"); h != "" {
 		return h
@@ -39,16 +61,76 @@ func coreHomeDir() string {
 	return os.Getenv("HOME") + "/.local/share/core-linux"
 }
 
-func keyMatches(msg tea.KeyMsg, keys ...string) bool {
-	for _, k := range keys {
-		if msg.String() == k {
-			return true
+// batchLoadModules loads ALL module metadata in ONE bash invocation
+func batchLoadModules() []ModEntry {
+	modCacheOnce.Do(func() {
+		pattern := coreHomeDir() + "/modules/*/manifest.json"
+		cmd := fmt.Sprintf(`jq -s '[.[] | {name, icon, description}]' %s 2>/dev/null || echo '[]'`, pattern)
+		out := bashOutput(cmd)
+		if out == "" {
+			modCache = []ModEntry{}
+			return
 		}
-	}
-	return false
+		if err := json.Unmarshal([]byte(out), &modCache); err != nil {
+			modCache = []ModEntry{}
+		}
+	})
+	return modCache
 }
 
-// updateHome handles key events on the home view
+// batchLoadTools loads ALL tools for a module in ONE bash invocation
+func batchLoadTools(module string) []ToolEntry {
+	manifest := fmt.Sprintf("%s/modules/%s/manifest.json", coreHomeDir(), module)
+	cmd := fmt.Sprintf(`jq -c '[.tools[] | {name, flag, description, tags}]' '%s' 2>/dev/null || echo '[]'`, manifest)
+	out := bashOutput(cmd)
+	if out == "" {
+		return nil
+	}
+	var tools []ToolEntry
+	if err := json.Unmarshal([]byte(out), &tools); err != nil {
+		return nil
+	}
+	return tools
+}
+
+// batchInstalledState loads the full installed state in ONE bash invocation
+func batchInstalledState() InstalledState {
+	cmd := fmt.Sprintf(`cat '%s/installed.json' 2>/dev/null || echo '{"modules":{}}'`, stateDir())
+	out := bashOutput(cmd)
+	if out == "" {
+		return InstalledState{}
+	}
+	var raw struct {
+		Modules map[string]struct {
+			Tools map[string]struct {
+				Version string `json:"version"`
+			} `json:"tools"`
+		} `json:"modules"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		return InstalledState{}
+	}
+	result := make(InstalledState)
+	for mod, mdata := range raw.Modules {
+		result[mod] = make(map[string]string)
+		for tool, tdata := range mdata.Tools {
+			result[mod][tool] = tdata.Version
+		}
+	}
+	return result
+}
+
+func stateDir() string {
+	if s := os.Getenv("CORE_STATE_DIR"); s != "" {
+		return s
+	}
+	if s := os.Getenv("XDG_STATE_HOME"); s != "" {
+		return s + "/core-linux"
+	}
+	return os.Getenv("HOME") + "/.local/state/core-linux"
+}
+
+// updateHome handles key events
 func (a *App) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case keyMatches(msg, "q"):
@@ -81,27 +163,27 @@ func (a *App) viewHome() string {
 	b.WriteString(subtitleStyle.Render("Modular Development Environment"))
 	b.WriteString("\n")
 
-	// Get counts
-	modCount := len(a.modules)
-	instCountStr := bashOutput(fmt.Sprintf("source %s/lib/core/state.sh && get_installed_modules | wc -l", coreHomeDir()))
-	instCount := "0"
-	if instCountStr != "" {
-		instCount = instCountStr
+	// Get module data from cache
+	mods := batchLoadModules()
+	inst := batchInstalledState()
+
+	instCount := 0
+	for mod := range inst {
+		if len(inst[mod]) > 0 {
+			instCount++
+		}
 	}
 
-	// Platform
-	distro := bashOutput("source " + coreHomeDir() + "/lib/utils/platform.sh && detect_distro")
+	distro := bashOutput(fmt.Sprintf("source %s/lib/utils/platform.sh && echo \"${DISTRO_FAMILY:-unknown}\"", coreHomeDir()))
 
-	// Stats row
 	statsRow := lipgloss.JoinHorizontal(lipgloss.Top,
-		statCard("Modules", fmt.Sprintf("%d", modCount), currentTheme.Secondary),
-		statCard("Installed", instCount, currentTheme.Success),
+		statCard("Modules", fmt.Sprintf("%d", len(mods)), currentTheme.Secondary),
+		statCard("Installed", fmt.Sprintf("%d", instCount), currentTheme.Success),
 		statCard("Platform", distro, currentTheme.Muted),
 	)
 	b.WriteString(statsRow)
 	b.WriteString("\n\n")
 
-	// Quick actions menu
 	actions := []struct {
 		key, icon, label, desc string
 	}{
@@ -112,19 +194,14 @@ func (a *App) viewHome() string {
 	}
 
 	for _, act := range actions {
-		line := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(currentTheme.Secondary)).
-			Bold(true).
-			Render(act.key+". ") +
+		line := lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Secondary)).Bold(true).Render(act.key+". ") +
 			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Text)).Render(act.icon+" "+act.label) +
 			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(" — "+act.desc)
 		b.WriteString(line)
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color(currentTheme.Muted)).
-		Render("Press ? for help • q to quit"))
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render("? for help • q to quit"))
 
 	return b.String()
 }

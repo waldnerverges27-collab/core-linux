@@ -92,15 +92,7 @@ func NewApp() *App {
 
 // Init initializes the model
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(
-		a.spinner.Tick,
-		func() tea.Msg { return loadModulesMsg{} },
-	)
-}
-
-// loadModulesMsg is a message that carries loaded module data
-type loadModulesMsg struct {
-	modules []string
+	return a.spinner.Tick
 }
 
 // Update handles all messages and key events
@@ -144,10 +136,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.currentView = viewHome
 			}
 		}
-
-	case loadModulesMsg:
-		a.modules = msg.modules
-		a.loading = false
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd

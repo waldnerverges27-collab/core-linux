@@ -1,6 +1,9 @@
 package main
 
-import "github.com/charmbracelet/bubbles/key"
+import (
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 // KeyMap defines all keybindings for the TUI
 type KeyMap struct {
@@ -92,4 +95,14 @@ var defaultKeys = KeyMap{
 		key.WithKeys("ctrl+c"),
 		key.WithHelp("ctrl+c", "force quit"),
 	),
+}
+
+// keyMatches checks if a tea.KeyMsg matches any of the given key strings
+func keyMatches(msg tea.KeyMsg, keys ...string) bool {
+	for _, k := range keys {
+		if msg.String() == k {
+			return true
+		}
+	}
+	return false
 }

@@ -8,13 +8,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// updateModuleDetail handles key events on the module detail view
 func (a *App) updateModuleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	manifestFile := coreHomeDir() + "/modules/" + a.selectedModule + "/manifest.json"
-	toolCountStr := bashOutput(fmt.Sprintf("jq '.tools | length' '%s' 2>/dev/null || echo 0", manifestFile))
-	toolCount := 1
-	if toolCountStr != "" && toolCountStr != "0" {
-		fmt.Sscanf(toolCountStr, "%d", &toolCount)
+	tools := batchLoadTools(a.selectedModule)
+	toolCount := len(tools)
+	if toolCount == 0 {
+		toolCount = 1
 	}
 
 	switch {
@@ -50,53 +48,50 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// viewModuleDetail renders a single module with its tools
 func (a *App) viewModuleDetail() string {
 	mod := a.selectedModule
-	manifestFile := coreHomeDir() + "/modules/" + mod + "/manifest.json"
+	tools := batchLoadTools(mod)
+	inst := batchInstalledState()
+	mods := batchLoadModules()
 
-	name := bashOutput(fmt.Sprintf("jq -r '.name // \"%s\"' '%s'", mod, manifestFile))
-	version := bashOutput(fmt.Sprintf("jq -r '.version // \"1.0.0\"' '%s'", manifestFile))
-	desc := bashOutput(fmt.Sprintf("jq -r '.description // \"\"' '%s'", manifestFile))
-	icon := bashOutput(fmt.Sprintf("jq -r '.icon // \"\"' '%s'", manifestFile))
-	toolCountStr := bashOutput(fmt.Sprintf("jq '.tools | length' '%s' 2>/dev/null || echo 0", manifestFile))
-
-	var b strings.Builder
-
-	b.WriteString(titleStyle.Render(fmt.Sprintf("%s %s v%s", icon, name, version)))
-	b.WriteString(subtitleStyle.Render(desc))
-	b.WriteString("\n")
-
-	// Dependencies
-	deps := bashOutput(fmt.Sprintf("jq -r '.dependencies | join(\", \")' '%s' 2>/dev/null || echo ''", manifestFile))
-	if deps != "" {
-		b.WriteString(fmt.Sprintf("🔗 Dependencies: %s\n\n", deps))
+	// Find this module's icon
+	icon := ""
+	for _, m := range mods {
+		if m.Name == mod {
+			icon = m.Icon
+			break
+		}
 	}
 
-	// Tools
-	toolCount := 0
-	fmt.Sscanf(toolCountStr, "%d", &toolCount)
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(fmt.Sprintf("%s %s", icon, mod)))
+	b.WriteString("\n")
 
-	for i := 0; i < toolCount; i++ {
-		toolName := bashOutput(fmt.Sprintf("jq -r '.tools[%d].name // \"\"' '%s'", i, manifestFile))
-		toolFlag := bashOutput(fmt.Sprintf("jq -r '.tools[%d].flag // \"\"' '%s'", i, manifestFile))
-		toolDesc := bashOutput(fmt.Sprintf("jq -r '.tools[%d].description // \"\"' '%s'", i, manifestFile))
-		toolTags := bashOutput(fmt.Sprintf("jq -r '.tools[%d].tags | join(\", \")' '%s' 2>/dev/null || echo ''", i, manifestFile))
+	if len(tools) == 0 {
+		b.WriteString("Loading...\n")
+		return b.String()
+	}
 
-		installed := bashOutput(fmt.Sprintf("source %s/lib/core/state.sh && tool_is_installed '%s' '%s' && echo yes || echo no", coreHomeDir(), mod, toolName))
-
-		statusColor := currentTheme.Muted
+	for i, tool := range tools {
 		status := "✗"
-		if installed == "yes" {
-			statusColor = currentTheme.Success
-			status = "✔"
+		statusColor := currentTheme.Muted
+		verInfo := ""
+		if _, ok := inst[mod]; ok {
+			if v, ok2 := inst[mod][tool.Name]; ok2 {
+				status = "✔"
+				statusColor = currentTheme.Success
+				if v != "" {
+					verInfo = fmt.Sprintf(" (%s)", v)
+				}
+			}
 		}
 
-		line := fmt.Sprintf(" %s  %s %s — %s",
+		line := fmt.Sprintf(" %s  %s %s — %s%s",
 			lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(status),
-			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Secondary)).Bold(true).Render(toolFlag),
-			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(currentTheme.Text)).Render(toolName),
-			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(toolDesc),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Secondary)).Bold(true).Render(tool.Flag),
+			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(currentTheme.Text)).Render(tool.Name),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(tool.Description),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(verInfo),
 		)
 
 		if i == a.toolIndex {
@@ -109,17 +104,14 @@ func (a *App) viewModuleDetail() string {
 
 		b.WriteString(line)
 		b.WriteString("\n")
-		if toolTags != "" {
-			b.WriteString(lipgloss.NewStyle().
-				Foreground(lipgloss.Color(currentTheme.Muted)).
-				Italic(true).
-				Render(fmt.Sprintf("     [%s]", toolTags)))
+		if len(tool.Tags) > 0 {
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Italic(true).
+				Render(fmt.Sprintf("     [%s]", strings.Join(tool.Tags, ", "))))
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")
 	}
 
-	// Actions
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().
 		Foreground(lipgloss.Color(currentTheme.Muted)).

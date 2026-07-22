@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// updateModules handles key events on the modules browser view
 func (a *App) updateModules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	mods := batchLoadModules()
 	switch {
 	case keyMatches(msg, "q"):
 		return a, tea.Quit
@@ -20,12 +20,12 @@ func (a *App) updateModules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.moduleIndex--
 		}
 	case keyMatches(msg, "down", "j"):
-		if len(a.modules) > 0 && a.moduleIndex < len(a.modules)-1 {
+		if len(mods) > 0 && a.moduleIndex < len(mods)-1 {
 			a.moduleIndex++
 		}
 	case keyMatches(msg, "enter"):
-		if len(a.modules) > 0 && a.moduleIndex >= 0 && a.moduleIndex < len(a.modules) {
-			a.selectedModule = a.modules[a.moduleIndex]
+		if len(mods) > 0 && a.moduleIndex >= 0 && a.moduleIndex < len(mods) {
+			a.selectedModule = mods[a.moduleIndex].Name
 			a.toolIndex = 0
 			a.currentView = viewModuleDetail
 		}
@@ -33,7 +33,6 @@ func (a *App) updateModules(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// viewModules renders the module browser
 func (a *App) viewModules() string {
 	var b strings.Builder
 
@@ -41,27 +40,26 @@ func (a *App) viewModules() string {
 	b.WriteString(subtitleStyle.Render("Select a module to view and install its tools"))
 	b.WriteString("\n")
 
-	if len(a.modules) == 0 {
+	mods := batchLoadModules()
+	inst := batchInstalledState()
+
+	if len(mods) == 0 {
 		return a.spinner.View() + " Loading modules..."
 	}
 
-	for i, mod := range a.modules {
-		// Get module info from manifest
-		manifestFile := coreHomeDir() + "/modules/" + mod + "/manifest.json"
-		icon := bashOutput(fmt.Sprintf("jq -r '.icon // \"\"' '%s' 2>/dev/null || echo ''", manifestFile))
-		desc := bashOutput(fmt.Sprintf("jq -r '.description // \"\"' '%s' 2>/dev/null || echo ''", manifestFile))
-		status := bashOutput(fmt.Sprintf("source %s/lib/core/state.sh && module_is_installed %s && echo '✔' || echo '✗'", coreHomeDir(), mod))
-
+	for i, mod := range mods {
+		status := "✗"
 		statusColor := currentTheme.Muted
-		if status == "✔" {
+		if _, ok := inst[mod.Name]; ok && len(inst[mod.Name]) > 0 {
+			status = "✔"
 			statusColor = currentTheme.Success
 		}
 
 		line := fmt.Sprintf(" %s  %s %s — %s",
 			lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(status),
-			icon,
-			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(currentTheme.Text)).Render(mod),
-			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(desc),
+			mod.Icon,
+			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(currentTheme.Text)).Render(mod.Name),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Muted)).Render(mod.Description),
 		)
 
 		if i == a.moduleIndex {
@@ -76,7 +74,6 @@ func (a *App) viewModules() string {
 		b.WriteString("\n\n")
 	}
 
-	// Navigation hints
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().
 		Foreground(lipgloss.Color(currentTheme.Muted)).
