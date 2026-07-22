@@ -61,14 +61,15 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) viewID {
 
 // renderToolDetailContent returns the FULL tool list (viewport clips it)
 func (a *App) renderToolDetailContent(tools []ToolEntry) string {
-	mod := a.selectedModule
-	// Detecta tools usando _tool_detect (bash) en UNA sola llamada
-	toolVersions := batchDetectTools(mod)
-
 	var b strings.Builder
 
 	if len(tools) == 0 {
-		return "Loading...\n"
+		return a.spinner.View() + " Loading tools...\n"
+	}
+
+	// Si las versiones no están listas, mostrar spinner
+	if !a.toolVersionsReady {
+		return a.spinner.View() + " Detecting installed tools...\n"
 	}
 
 	for i, tool := range tools {
@@ -76,7 +77,7 @@ func (a *App) renderToolDetailContent(tools []ToolEntry) string {
 		statusColor := currentTheme.Muted
 		verInfo := ""
 		// Usar detección real (command -v + --version)
-		if v, ok := toolVersions[tool.Name]; ok && v != "" {
+		if v, ok := a.toolVersions[tool.Name]; ok && v != "" {
 			status = "✔"
 			statusColor = currentTheme.Success
 			verInfo = fmt.Sprintf(" (%s)", v)

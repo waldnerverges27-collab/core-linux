@@ -30,21 +30,26 @@ const (
 // App is the main Bubble Tea model
 type App struct {
 	currentView viewID
+	prevView    viewID // track view changes for side effects
 	width       int
 	height      int
 	help        help.Model
 	spinner     spinner.Model
 	keys        KeyMap
 
-	// Scroll viewport (used by modules, module_detail, help, brain)
+	// Scroll viewport
 	vp      viewport.Model
-	vpReady bool // true once width/height are set
+	vpReady bool
 
 	// Module data
 	modules        []string
 	moduleIndex    int
 	selectedModule string
 	toolIndex      int
+
+	// Tool detection cache (populated async)
+	toolVersions      map[string]string
+	toolVersionsReady bool
 
 	// Install progress
 	installing      bool
@@ -62,12 +67,9 @@ type App struct {
 	// Env
 	envTable table.Model
 
-	// Notifications
 	notification string
 	notifyTimer  int
-
-	// Loading
-	loading bool
+	loading      bool
 }
 
 func NewApp() *App {
@@ -97,23 +99,16 @@ func (a *App) Init() tea.Cmd {
 	return a.spinner.Tick
 }
 
-// vpContentHeight returns the height available for viewport content
-// (terminal height minus header/footer/padding overhead)
 func (a *App) vpContentHeight() int {
-	// overhead: title(1) + subtitle(1) + statusbar(1) + padding(1) + help(1) + margin(1) = 6
 	h := a.height - 6
 	if h < 3 {
 		h = 3
 	}
-	if h > a.height-1 {
-		h = a.height - 1
-	}
 	return h
 }
 
-// rebuildViewport sets the viewport dimensions and content for the current view
 func (a *App) rebuildViewport(content string) {
-	vpWidth := a.width - 4 // account for padding
+	vpWidth := a.width - 4
 	if vpWidth < 10 {
 		vpWidth = 10
 	}
@@ -128,11 +123,9 @@ func (a *App) rebuildViewport(content string) {
 		a.vp.Width = vpWidth
 		a.vp.Height = vpHeight
 	}
-
 	a.vp.SetContent(content)
 }
 
-// viewHeader renders the title area above the viewport
 func (a *App) viewHeader(title, subtitle string) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(title))
@@ -159,59 +152,78 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case key.Matches(msg, a.keys.Help):
 			if a.currentView != viewHelp {
-				a.enterView(viewHelp)
+				a.currentView = viewHelp
 				return a, nil
 			}
 		}
 
-		// View-specific key handling
-		var handled bool
-		a.currentView, handled = a.handleViewKey(msg)
-		if handled {
-			return a, nil
+		// View-specific handling
+		var newView viewID
+		switch a.currentView {
+		case viewHome:
+			newView = a.updateHome(msg)
+		case viewModules:
+			newView = a.updateModules(msg)
+		case viewModuleDetail:
+			newView = a.updateModuleDetail(msg)
+		case viewSettings:
+			newView = a.updateSettings(msg)
+		case viewBrain:
+			newView = a.updateBrain(msg)
+		case viewEnv:
+			newView = a.updateEnv(msg)
+		case viewHelp:
+			if key.Matches(msg, a.keys.Quit, a.keys.Back, a.keys.Help) {
+				newView = viewHome
+			} else {
+				newView = viewHelp
+			}
+		case viewInstall:
+			newView = viewInstall
+		}
+
+		// If view changed, handle side effects
+		if newView != a.currentView {
+			a.prevView = a.currentView
+			a.currentView = newView
+
+			// Entering module detail: async load tool versions
+			if newView == viewModuleDetail {
+				a.toolVersionsReady = false
+				cmds = append(cmds, a.loadToolVersions)
+			}
+			if newView != viewModuleDetail {
+				a.vp.GotoTop()
+			} else {
+				a.vp.GotoTop()
+			}
 		}
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		a.spinner, cmd = a.spinner.Update(msg)
 		cmds = append(cmds, cmd)
+
+	case toolVersionsMsg:
+		if msg.mod == a.selectedModule {
+			a.toolVersions = msg.versions
+			a.toolVersionsReady = true
+		}
 	}
 
 	return a, tea.Batch(cmds...)
 }
 
-// handleViewKey routes key events to the appropriate view handler
-// Returns (newView, wasHandled)
-func (a *App) handleViewKey(msg tea.KeyMsg) (viewID, bool) {
-	switch a.currentView {
-	case viewHome:
-		return a.updateHome(msg), true
-	case viewModules:
-		return a.updateModules(msg), true
-	case viewModuleDetail:
-		return a.updateModuleDetail(msg), true
-	case viewSettings:
-		return a.updateSettings(msg), true
-	case viewBrain:
-		return a.updateBrain(msg), true
-	case viewEnv:
-		return a.updateEnv(msg), true
-	case viewHelp:
-		if key.Matches(msg, a.keys.Quit, a.keys.Back, a.keys.Help) {
-			return viewHome, true
-		}
-		return viewHelp, true
-	case viewInstall:
-		// Install view: only allow q to quit
-		return viewInstall, true
-	}
-	return a.currentView, false
+// loadToolVersions is a tea.Cmd that runs batchDetectTools in background
+func (a *App) loadToolVersions() tea.Msg {
+	mod := a.selectedModule
+	versions := batchDetectTools(mod)
+	return toolVersionsMsg{mod: mod, versions: versions}
 }
 
-// enterView transitions to a new view, rebuilding the viewport if needed
-func (a *App) enterView(v viewID) {
-	a.currentView = v
-	a.vp.GotoTop()
+type toolVersionsMsg struct {
+	mod      string
+	versions map[string]string
 }
 
 // View renders the current view
@@ -241,7 +253,7 @@ func (a *App) View() string {
 		body = a.renderHelpContent()
 	}
 
-	// For scrollable views, use viewport
+	// Scrollable views use viewport
 	switch a.currentView {
 	case viewModules, viewModuleDetail, viewBrain, viewHelp:
 		fullContent := header + body
