@@ -5,6 +5,7 @@ set -euo pipefail
 CORE_HOME="${CORE_HOME:-$HOME/.local/share/core-linux}"
 export CORE_HOME
 
+source "$CORE_HOME/lib/utils/colors.sh" 2>/dev/null || true
 source "$CORE_HOME/lib/utils/logger.sh" 2>/dev/null || true
 source "$CORE_HOME/lib/core/state.sh" 2>/dev/null || true
 source "$CORE_HOME/lib/utils/prompt.sh" 2>/dev/null || true

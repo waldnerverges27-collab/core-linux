@@ -3,11 +3,20 @@ set -euo pipefail
 
 # Color system for core-linux
 # Reads theme from config.toml, never emits raw ANSI codes.
+#
+# Idempotent: safe to source multiple times. Already-loaded
+# check prevents redeclaring the associative array.
 
 CORE_CONFIG="${CORE_CONFIG:-$HOME/.config/core-linux/config.toml}"
 CORE_HOME="${CORE_HOME:-$HOME/.local/share/core-linux}"
 
-declare -A COLORS
+# Guard: avoid re-declaring COLORS if already sourced
+if ! declare -p COLORS &>/dev/null 2>&1; then
+	declare -A COLORS
+else
+	# Already loaded — just re-run load_theme to apply any config change
+	:
+fi
 
 load_theme() {
 	local theme="${1:-catppuccin-mocha}"
