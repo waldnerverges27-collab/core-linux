@@ -15,6 +15,12 @@ version() {
 		ver=$(grep -E '^version' "$CORE_HOME/core.conf.example" 2>/dev/null | head -1 | cut -d'"' -f2 || echo "1.0.0")
 	fi
 	echo "core-linux version $ver"
+
+	# Silently check for updates (background, no error if fails)
+	if [[ -f "$CORE_HOME/lib/core/updater.sh" ]]; then
+		source "$CORE_HOME/lib/core/updater.sh"
+		version_check "$ver" 2>/dev/null || true
+	fi
 }
 
 usage() {
@@ -25,13 +31,16 @@ Usage:
   core                          Launch TUI (or fallback bash TUI)
   core install <module> [--tool...]  Install module/tools
   core uninstall <module> [--tool...] Uninstall module/tools
-  core update [module|--all]    Update framework or module
+  core update                   Update core-linux framework itself
+  core update --check           Check for updates without applying
+  core update <module>          Reinstall a specific module
+  core update --all             Update all installed modules
   core list [module]            List modules or tools
   core show <module|tool>       Show details
   core env set|unset|ls         Manage environment variables
   core brain <subcommand>       Second brain memory system
   core init                     Interactive project setup
-  core --version                Print version
+  core --version                Print version and check for updates
   core --help                   Show this help
 EOF
 }
@@ -65,7 +74,10 @@ main() {
 			module_uninstall "$mod" "$@"
 			;;
 		update)
-			if [[ "${1:-}" == "--all" ]]; then
+			if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
+				source "$CORE_HOME/lib/core/updater.sh"
+				self_update --check
+			elif [[ "${1:-}" == "--all" ]]; then
 				source "$CORE_HOME/lib/core/module_manager.sh"
 				local mod
 				while IFS= read -r mod; do
