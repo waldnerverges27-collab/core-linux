@@ -42,18 +42,14 @@ func (a *App) updateModuleDetail(msg tea.KeyMsg) viewID {
 		a.installLog = []string{fmt.Sprintf("Installing %s...", a.selectedModule)}
 		a.installProgress = 0.0
 		a.currentView = viewInstall
-		go func(m string) {
-			coreCLI("install", m)
-		}(a.selectedModule)
+		a.pendingCmd = a.runInstallCmd("install", a.selectedModule)
 		return viewInstall
 	case keyMatches(msg, "x"):
 		a.installing = true
 		a.installLog = []string{fmt.Sprintf("Uninstalling %s...", a.selectedModule)}
 		a.installProgress = 0.0
 		a.currentView = viewInstall
-		go func(m string) {
-			coreCLI("uninstall", m)
-		}(a.selectedModule)
+		a.pendingCmd = a.runInstallCmd("uninstall", a.selectedModule)
 		return viewInstall
 	}
 	return viewModuleDetail

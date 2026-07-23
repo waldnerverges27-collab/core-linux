@@ -4,8 +4,41 @@ import (
 	"fmt"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// installDoneMsg signals that an install/uninstall operation finished
+type installDoneMsg struct {
+	module  string
+	action  string
+	success bool
+	output  string
+}
+
+// runInstallCmd returns a tea.Cmd that runs 'core install/uninstall' in background
+// and sends installDoneMsg when finished (non-blocking for the TUI)
+func (a *App) runInstallCmd(action, module string) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if action == "install" {
+			err = coreCLI("install", module)
+		} else {
+			err = coreCLI("uninstall", module)
+		}
+		output := ""
+		success := err == nil
+		if err != nil {
+			output = err.Error()
+		}
+		return installDoneMsg{
+			module:  module,
+			action:  action,
+			success: success,
+			output:  output,
+		}
+	}
+}
 
 // viewInstall renders the install/uninstall progress view
 func (a *App) viewInstall() string {
@@ -17,7 +50,7 @@ func (a *App) viewInstall() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(currentTheme.Text)).Render("Running..."))
 	b.WriteString("\n\n")
 
-	// Progress bar
+	// Animated progress bar (indeterminate — shows activity)
 	barWidth := 40
 	filled := int(a.installProgress * float64(barWidth))
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
@@ -35,7 +68,7 @@ func (a *App) viewInstall() string {
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().
 		Foreground(lipgloss.Color(currentTheme.Muted)).
-		Render("Press q to return to modules when complete"))
+		Render("Processing... please wait"))
 
 	return b.String()
 }

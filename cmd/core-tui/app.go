@@ -55,6 +55,7 @@ type App struct {
 	installing      bool
 	installLog      []string
 	installProgress float64
+	pendingCmd      tea.Cmd // cmd to execute after returning from Update
 
 	// Settings
 	settingsCursor int
@@ -187,16 +188,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.prevView = a.currentView
 			a.currentView = newView
 
-			// Entering module detail: async load tool versions
 			if newView == viewModuleDetail {
 				a.toolVersionsReady = false
 				cmds = append(cmds, a.loadToolVersions)
 			}
-			if newView != viewModuleDetail {
-				a.vp.GotoTop()
-			} else {
-				a.vp.GotoTop()
-			}
+			a.vp.GotoTop()
+		}
+
+		// Execute pending cmd after view change (e.g. install)
+		if a.pendingCmd != nil {
+			cmds = append(cmds, a.pendingCmd)
+			a.pendingCmd = nil
 		}
 
 	case spinner.TickMsg:
@@ -209,6 +211,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.toolVersions = msg.versions
 			a.toolVersionsReady = true
 		}
+
+	case installDoneMsg:
+		if msg.success {
+			a.installLog = append(a.installLog, fmt.Sprintf("✔ %s completado con éxito", msg.action))
+			a.installProgress = 1.0
+		} else {
+			a.installLog = append(a.installLog, fmt.Sprintf("❌ %s falló: %s", msg.action, msg.output))
+		}
+		// Refrescar detección de tools y volver al detalle del módulo
+		a.toolVersionsReady = false
+		cmds = append(cmds, a.loadToolVersions)
+		a.currentView = viewModuleDetail
 	}
 
 	return a, tea.Batch(cmds...)
